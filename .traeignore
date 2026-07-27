@@ -1,0 +1,122 @@
+# ========================================
+# LangSplat 项目 .traeignore
+# 总数据量约 682 GB，必须严格排除
+# 配合 .trae/rules/project_rules.md 使用
+# ========================================
+
+# ========== 训练输出目录（115 GB + 8.8 GB backup）==========
+output/
+output_backup/
+output_*/
+outputs/
+
+# ========== 数据集目录（29 GB）==========
+dataset/
+datasets/
+data/
+
+# ========== 模型权重目录 ==========
+ckpts/
+ckpt/
+checkpoints/
+checkpoint/
+autoencoder/ae_ckpt/
+pretrained/
+weights/
+models/
+best_ckpt/
+final_ckpt/
+
+# ========== 评估结果目录（合计约 2 GB）==========
+eval_result/
+eval_result_*/
+query_results/
+results/
+runs/
+
+# ========== 子模块下的大权重 ==========
+submodules/segment-anything-langsplat/*.pth
+submodules/segment-anything-langsplat/**/*.pth
+submodules/segment-anything-langsplat/weights/
+submodules/segment-anything-langsplat/checkpoints/
+submodules/langsplat-rasterization/build/
+submodules/simple-knn/build/
+
+# ========== 所有模型权重文件类型 ==========
+*.pth
+*.pt
+*.ckpt
+*.bin
+*.safetensors
+*.h5
+*.onnx
+*.pkl
+*.pickle
+*.ply
+*.splat
+*.npz
+*.npy
+
+# ========== 大数据文件类型 ==========
+*.csv
+*.parquet
+*.jsonl
+*.feather
+*.arrow
+*.mdb
+*.lmdb
+
+# ========== 日志 ==========
+*.log
+logs/
+log/
+
+# ========== TensorBoard 事件 ==========
+events.out.tfevents.*
+*.tfevents.*
+
+# ========== Python 缓存 ==========
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+env/
+.eggs/
+*.egg-info/
+
+# ========== Jupyter ==========
+.ipynb_checkpoints/
+
+# ========== WandB / MLflow ==========
+wandb/
+mlruns/
+.mlflow/
+
+# ========== conda / 包管理 ==========
+.conda/
+build/
+dist/
+
+# ========== 敏感文件 ==========
+.env
+.env.*
+*.key
+*.pem
+secrets/
+credentials/
+**/id_rsa*
+
+# ========== Git ==========
+.git/
+
+# ========== IDE 配置 ==========
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ========== 系统文件 ==========
+.DS_Store
+Thumbs.db
