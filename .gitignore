@@ -10,3 +10,12 @@ tensorboard_3d
 events.out*
 ckpt
 release
+
+# 大数据/产物目录 (科研备份排除, 切勿提交)
+dataset/
+ckpts/
+eval_result/
+output_backup/
+
+# 日志
+*.log

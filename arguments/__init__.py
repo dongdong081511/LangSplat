@@ -81,7 +81,7 @@ class OptimizationParams(ParamGroup):
         self.feature_lr = 0.0025
         self.opacity_lr = 0.05
         self.language_feature_lr = 0.0025 # TODO: update
-        self.include_feature = True # Set to False if train the original gs
+        self.include_feature = False # 默认 False（RGB 训练），LangSplat 训练时命令行传 --include_feature 启用
         self.scaling_lr = 0.005
         self.rotation_lr = 0.001
         self.percent_dense = 0.01

@@ -88,7 +88,9 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
         language_feature_precomp = language_feature_precomp/ (language_feature_precomp.norm(dim=-1, keepdim=True) + 1e-9)
         # language_feature_precomp = torch.sigmoid(language_feature_precomp)
     else:
-        language_feature_precomp = torch.zeros((1,), dtype=opacity.dtype, device=opacity.device)
+        # 必须分配 P*F 大小的张量，CUDA kernel 会无条件读取 language_feature[coll_id*F+i]
+        # 若仅分配 1 元素会导致越界访问，densification 后点数变化触发 illegal memory access
+        language_feature_precomp = torch.zeros((means3D.shape[0], 3), dtype=opacity.dtype, device=opacity.device)
         
     # Rasterize visible Gaussians to image, obtain their radii (on screen). 
     # start_time = time.time()

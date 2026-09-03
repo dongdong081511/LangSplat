@@ -2,7 +2,7 @@
 CASE_NAME="teatime"
 
 # path to lerf_ovs/label
-gt_folder="../data/lerf_ovs/label"
+gt_folder="../dataset/lerf_ovs/label"
 
 root_path="../"
 
