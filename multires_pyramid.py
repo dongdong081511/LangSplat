@@ -20,6 +20,7 @@ import torch
 # 全局模式
 MODE = "none"
 LEVELS = 2
+CROSS_IOU_THR = 0.7
 
 
 def set_mode(mode: str = "none", levels: int = 2):
