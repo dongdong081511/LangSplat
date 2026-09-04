@@ -44,7 +44,7 @@ if __name__ == '__main__':
         batch_size=64,
         shuffle=True,
         num_workers=16,
-        drop_last=False
+        drop_last=True
     )
 
     test_loader = DataLoader(
