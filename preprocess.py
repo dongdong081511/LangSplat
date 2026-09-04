@@ -21,6 +21,8 @@ try:
 except ImportError:
     assert False, "open_clip is not installed, install it with `pip install open-clip-torch`"
 
+import multires_pyramid
+
 
 @dataclass
 class OpenCLIPNetworkConfig:
@@ -296,10 +298,15 @@ def masks_update(*args, **kwargs):
 def sam_encoder(image):
     image = cv2.cvtColor(image[0].permute(1,2,0).numpy().astype(np.uint8), cv2.COLOR_BGR2RGB)
     # pre-compute masks
-    masks_default, masks_s, masks_m, masks_l = mask_generator.generate(image)
-    # pre-compute postprocess
-    masks_default, masks_s, masks_m, masks_l = \
-        masks_update(masks_default, masks_s, masks_m, masks_l, iou_thr=0.8, score_thr=0.7, inner_thr=0.5)
+    if multires_pyramid.MODE == "A":
+        masks_default, masks_s, masks_m, masks_l = multires_pyramid.run_sam_multiscale(
+            mask_generator, image, levels=multires_pyramid.LEVELS
+        )
+    else:
+        masks_default, masks_s, masks_m, masks_l = mask_generator.generate(image)
+        # pre-compute postprocess
+        masks_default, masks_s, masks_m, masks_l = \
+            masks_update(masks_default, masks_s, masks_m, masks_l, iou_thr=0.8, score_thr=0.7, inner_thr=0.5)
     
     def mask2segmap(masks, image):
         seg_img_list = []
@@ -349,8 +356,11 @@ if __name__ == '__main__':
     parser.add_argument('--dataset_path', type=str, required=True)
     parser.add_argument('--resolution', type=int, default=-1)
     parser.add_argument('--sam_ckpt_path', type=str, default="ckpts/sam_vit_h_4b8939.pth")
+    parser.add_argument('--multires_mode', type=str, default='none', choices=['none', 'A'], help='多分辨率模式: none/A(图像金字塔)')
+    parser.add_argument('--pyramid_levels', type=int, default=2, help='金字塔层数 (2=1.0x+0.5x)')
     args = parser.parse_args()
     torch.set_default_dtype(torch.float32)
+    multires_pyramid.set_mode(args.multires_mode, args.pyramid_levels)
 
     dataset_path = args.dataset_path
     sam_ckpt_path = args.sam_ckpt_path
