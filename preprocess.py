@@ -300,7 +300,7 @@ def sam_encoder(image):
     # pre-compute masks
     if multires_pyramid.MODE == "A":
         masks_default, masks_s, masks_m, masks_l = multires_pyramid.run_sam_multiscale(
-            mask_generator, image, levels=multires_pyramid.LEVELS, cross_iou_thr=multires_pyramid.CROSS_IOU_THR
+            mask_generator, image, levels=multires_pyramid.LEVELS, cross_iou_thr=multires_pyramid.CROSS_IOU_THR, pyramid_type=multires_pyramid.PYRAMID_TYPE
         )
     else:
         masks_default, masks_s, masks_m, masks_l = mask_generator.generate(image)
@@ -359,9 +359,10 @@ if __name__ == '__main__':
     parser.add_argument('--multires_mode', type=str, default='none', choices=['none', 'A'], help='多分辨率模式: none/A(图像金字塔)')
     parser.add_argument('--pyramid_levels', type=int, default=2, help='金字塔层数 (2=1.0x+0.5x)')
     parser.add_argument('--cross_iou_thr', type=float, default=0.7, help='跨尺度NMS IoU阈值')
+    parser.add_argument('--pyramid_type', type=str, default='down', choices=['down', 'up', 'bidir'], help='金字塔类型: down=下采样, up=上采样, bidir=双向')
     args = parser.parse_args()
     torch.set_default_dtype(torch.float32)
-    multires_pyramid.set_mode(args.multires_mode, args.pyramid_levels)
+    multires_pyramid.set_mode(args.multires_mode, args.pyramid_levels, args.pyramid_type)
     multires_pyramid.CROSS_IOU_THR = args.cross_iou_thr
 
     dataset_path = args.dataset_path
