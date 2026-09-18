@@ -45,6 +45,10 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         (model_params, first_iter) = torch.load(checkpoint)
         if len(model_params) == 12 and opt.include_feature:
             first_iter = 0
+        elif len(model_params) == 13 and opt.include_feature:
+            # Retraining language features from an existing feature checkpoint:
+            # reset first_iter to 0 so training runs from beginning
+            first_iter = 0
         gaussians.restore(model_params, opt)
         
     bg_color = [1, 1, 1] if dataset.white_background else [0, 0, 0]

@@ -21,6 +21,18 @@ try:
 except ImportError:
     assert False, "open_clip is not installed, install it with `pip install open-clip-torch`"
 
+# Multi-modal: DINOv2 extractor (lazy loaded, only when --use_dino flag set)
+_dino_model = None
+
+def get_dino_model():
+    global _dino_model
+    if _dino_model is None:
+        import sys
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from mm_langsplat.extractors.dino_extractor import DINOv2Extractor
+        _dino_model = DINOv2Extractor(model_name='dinov2_vitb14').to('cuda')
+    return _dino_model
+
 
 @dataclass
 class OpenCLIPNetworkConfig:
@@ -110,38 +122,53 @@ class OpenCLIPNetwork(nn.Module):
 
 
 
-def create(image_list, data_list, save_folder):
+def create(image_list, data_list, save_folder, extract_dino=False):
     assert image_list is not None, "image_list must be provided to generate features"
     embed_size=512
+    dino_size = 768  # dinov2_vitb14
     seg_maps = []
     total_lengths = []
     timer = 0
     img_embeds = torch.zeros((len(image_list), 300, embed_size))
-    seg_maps = torch.zeros((len(image_list), 4, *image_list[0].shape[1:])) 
+    dino_embeds_all = torch.zeros((len(image_list), 300, dino_size)) if extract_dino else None
+    seg_maps = torch.zeros((len(image_list), 4, *image_list[0].shape[1:]))
     mask_generator.predictor.model.to('cuda')
 
     for i, img in tqdm(enumerate(image_list), desc="Embedding images", leave=False):
         timer += 1
         try:
-            img_embed, seg_map = _embed_clip_sam_tiles(img.unsqueeze(0), sam_encoder)
+            if extract_dino:
+                img_embed, dino_embed, seg_map = _embed_clip_sam_tiles(img.unsqueeze(0), sam_encoder, extract_dino=True)
+            else:
+                img_embed, seg_map = _embed_clip_sam_tiles(img.unsqueeze(0), sam_encoder, extract_dino=False)
         except:
             raise ValueError(timer)
 
         lengths = [len(v) for k, v in img_embed.items()]
         total_length = sum(lengths)
         total_lengths.append(total_length)
-        
+
         if total_length > img_embeds.shape[1]:
             pad = total_length - img_embeds.shape[1]
             img_embeds = torch.cat([
                 img_embeds,
                 torch.zeros((len(image_list), pad, embed_size))
             ], dim=1)
+            if extract_dino:
+                dino_embeds_all = torch.cat([
+                    dino_embeds_all,
+                    torch.zeros((len(image_list), pad, dino_size))
+                ], dim=1)
 
         img_embed = torch.cat([v for k, v in img_embed.items()], dim=0)
         assert img_embed.shape[0] == total_length
         img_embeds[i, :total_length] = img_embed
-        
+
+        if extract_dino:
+            dino_embed = torch.cat([v for k, v in dino_embed.items()], dim=0)
+            assert dino_embed.shape[0] == total_length
+            dino_embeds_all[i, :total_length] = dino_embed
+
         seg_map_tensor = []
         lengths_cumsum = lengths.copy()
         for j in range(1, len(lengths)):
@@ -157,7 +184,7 @@ def create(image_list, data_list, save_folder):
         seg_maps[i] = seg_map
 
     mask_generator.predictor.model.to('cpu')
-        
+
     for i in range(img_embeds.shape[0]):
         save_path = os.path.join(save_folder, data_list[i].split('.')[0])
         assert total_lengths[i] == int(seg_maps[i].max() + 1)
@@ -166,6 +193,9 @@ def create(image_list, data_list, save_folder):
             'seg_maps': seg_maps[i]
         }
         sava_numpy(save_path, curr)
+        if extract_dino:
+            dino_path = save_path + '_f_dino.npy'
+            np.save(dino_path, dino_embeds_all[i, :total_lengths[i]].numpy())
 
 def sava_numpy(save_path, data):
     save_path_s = save_path + '_s.npy'
@@ -173,11 +203,12 @@ def sava_numpy(save_path, data):
     np.save(save_path_s, data['seg_maps'].numpy())
     np.save(save_path_f, data['feature'].numpy())
 
-def _embed_clip_sam_tiles(image, sam_encoder):
+def _embed_clip_sam_tiles(image, sam_encoder, extract_dino=False):
     aug_imgs = torch.cat([image])
     seg_images, seg_map = sam_encoder(aug_imgs)
 
     clip_embeds = {}
+    dino_embeds = {}
     for mode in ['default', 's', 'm', 'l']:
         tiles = seg_images[mode]
         tiles = tiles.to("cuda")
@@ -185,7 +216,14 @@ def _embed_clip_sam_tiles(image, sam_encoder):
             clip_embed = model.encode_image(tiles)
         clip_embed /= clip_embed.norm(dim=-1, keepdim=True)
         clip_embeds[mode] = clip_embed.detach().cpu().half()
-    
+
+        if extract_dino:
+            dino_model = get_dino_model()
+            dino_feat = dino_model.forward_batch(tiles, batch_size=32)
+            dino_embeds[mode] = dino_feat.half()
+
+    if extract_dino:
+        return clip_embeds, dino_embeds, seg_map
     return clip_embeds, seg_map
 
 def get_seg_img(mask, image):
@@ -349,6 +387,10 @@ if __name__ == '__main__':
     parser.add_argument('--dataset_path', type=str, required=True)
     parser.add_argument('--resolution', type=int, default=-1)
     parser.add_argument('--sam_ckpt_path', type=str, default="ckpts/sam_vit_h_4b8939.pth")
+    parser.add_argument('--use_dino', action='store_true',
+                        help='Also extract DINOv2 features per tile (saved as _f_dino.npy)')
+    parser.add_argument('--save_subdir', type=str, default='language_features',
+                        help='Subdirectory name for saving features')
     args = parser.parse_args()
     torch.set_default_dtype(torch.float32)
 
@@ -399,6 +441,6 @@ if __name__ == '__main__':
     images = [img_list[i].permute(2, 0, 1)[None, ...] for i in range(len(img_list))]
     imgs = torch.cat(images)
 
-    save_folder = os.path.join(dataset_path, 'language_features')
+    save_folder = os.path.join(dataset_path, args.save_subdir)
     os.makedirs(save_folder, exist_ok=True)
-    create(imgs, data_list, save_folder)
+    create(imgs, data_list, save_folder, extract_dino=args.use_dino)

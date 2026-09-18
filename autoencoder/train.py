@@ -33,10 +33,12 @@ if __name__ == '__main__':
                     default=[16, 32, 64, 128, 256, 256, 512],
                     )
     parser.add_argument('--dataset_name', type=str, required=True)
+    parser.add_argument('--data_subdir', type=str, default='language_features',
+                        help='Subdirectory containing _f.npy feature files')
     args = parser.parse_args()
     dataset_path = args.dataset_path
     num_epochs = args.num_epochs
-    data_dir = f"{dataset_path}/language_features"
+    data_dir = f"{dataset_path}/{args.data_subdir}"
     os.makedirs(f'ckpt/{args.dataset_name}', exist_ok=True)
     train_dataset = Autoencoder_dataset(data_dir)
     train_loader = DataLoader(
