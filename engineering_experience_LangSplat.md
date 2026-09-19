@@ -1,7 +1,7 @@
 # LangSplat 工程经验总结
 
 > 本文档记录 LangSplat 多模态融合实验中积累的工程经验，避免重复试错。
-> 最后更新: 2026-09-18 (分支: experiment/crossattn-mm)
+> 最后更新: 2026-09-19 (分支: experiment/crossattn-mm)
 
 ---
 
@@ -187,9 +187,13 @@ export NVCC_PREPEND_FLAGS="-ccbin /usr/bin/g++-11"
 | fused (mse_cos) | 6 | 0.6251 | 0.9153 | 6d 对 fused 有选择性增益 |
 | fused (mse_cos) | 12 | 0.6609 | 0.8644 | 12d 几乎追平 baseline |
 | **fused (mse_only)** | **12** | **0.6723** | **0.9153** | **首次超越 baseline** |
+| baseline | 16 | 0.6401 | 0.8475 | baseline 超过 12d 后退化 |
+| fused (mse_only) | 16 | 0.6698 | 0.8814 | fused 饱和略降，仍超 baseline +3.0% |
 
 - **3d 瓶颈是不成比例损害 fused 特征的根本原因**
-- fused IoU 随维度单调上升: 3d 0.5351 → 6d 0.6251 → 12d 0.6609/0.6723
+- fused IoU 随维度单调上升至 12d 后饱和: 3d 0.5351 → 6d 0.6251 → 12d 0.6609/0.6723 → 16d 0.6698
+- baseline 在 12d 达峰后退化: 6d 0.6285 → 3d 0.6431 → 12d 0.6660 → 16d 0.6401
+- **fused 对 AE 维度更鲁棒**: 12d→16d，baseline 退化 -2.6pp，fused 仅 -0.25pp，fused 优势扩大至 +3.0pp IoU / +3.4pp Loc
 - **DINOv2 融合增益依赖: 损失函数设计 (MSE-only) + AE 维度 (12d) 共同作用**
 
 ---
@@ -273,8 +277,8 @@ dataset/lerf_ovs/label/
 
 ## 10. 关键结论速查
 
-1. **最优配置**: cross-attn 融合 + MSE-only 损失 + 12d AE → IoU=0.6723 (超 baseline +0.6%)
+1. **最优配置**: cross-attn 融合 + MSE-only 损失 + 12d AE → IoU=0.6723 (超 baseline +0.6%)；16d 已验证饱和 (EXP-011/012)，12d 为最优维度
 2. **损失排序**: mse_only > mse_cos > infonce
-3. **维度排序**: 12d > 6d > 3d (对 fused); 12d > 3d > 6d (对 baseline)
+3. **维度排序**: 12d > 16d > 6d > 3d (对 fused); 12d > 3d > 16d > 6d (对 baseline)
 4. **DINOv2 有增益**: 但需 损失函数 + AE 维度 共同作用，三者缺一不可
 5. **实验记录**: 所有参数和结果追加写入 `hyper_parameter.md`，不替换历史数据

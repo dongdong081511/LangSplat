@@ -174,6 +174,40 @@
 
 ---
 
+## 实验编号: EXP-011 — baseline (纯CLIP) 16d
+- **分支**: experiment/crossattn-mm
+- **方案**: 与 EXP-007 相同（纯CLIP），但 AE 输出从 12d 改为 16d
+  - 修改 rasterizer config.h NUM_CHANNELS_language_feature 12→16
+  - 修改 gaussian_model.py / gaussian_renderer 硬编码 12→16
+  - AE encoder: [256, 128, 64, 32, 16], decoder: [16, 32, 64, 128, 256, 256, 512]
+- **AE**: best_loss=0.13770021（低于 12d 的 0.1469，重建更好）
+- **encode_dim3**: cos_sim=0.9538, 99.7% > 0.9
+- **Gaussian训练**: 3 level, 30000 iter, PSNR 31.73
+- **结果**:
+  - IoU chosen: **0.6401** (-2.6% vs baseline 12d 0.6660, -0.3% vs baseline 3d)
+  - Localization: **0.8475** (-3.4% vs baseline 12d, -5.1% vs baseline 3d)
+- **结论**: baseline 超过 12d 后开始退化（维度排序 12d > 3d > 16d > 6d），12d 是纯 CLIP 的最优维度
+
+---
+
+## 实验编号: EXP-012 — MSE-only 融合 16d
+- **分支**: experiment/crossattn-mm
+- **方案**: 与 EXP-010 相同（cross-attn fused + mse_only），但 AE 输出从 12d 改为 16d
+- **融合网络**: 复用 EXP-010 的 fusion_teatime_mseonly.pth（cos_sim=0.9796）
+- **AE**: best_loss=0.08664520（与 12d 的 0.0843 相当）
+- **encode_dim3**: cos_sim=0.9707, 100.0% > 0.9
+- **Gaussian训练**: 3 level, 30000 iter, PSNR 31.73
+- **结果**:
+  - IoU chosen: **0.6698** (-0.25% vs fused 12d 0.6723，基本饱和)
+  - Localization: **0.8814** (-3.4% vs fused 12d 0.9153)
+  - vs baseline 16d: IoU **+3.0%**，Loc **+3.4%**
+- **结论**:
+  - **12d 确认为最优 AE 维度**：fused 在 16d 饱和略降，baseline 明显退化
+  - 但 fused 的相对优势在 16d 扩大（+3.0% vs 12d 时的 +0.6%）：AE 维度升高时 baseline 退化快于 fused，fused 对 AE 维度更鲁棒
+  - AE 重建 loss 更低（baseline 16d 0.1377 < 12d 0.1469）但下游 IoU 更差，再次验证"AE 重建好 ≠ 下游好"
+
+---
+
 ## 汇总对比表
 
 | 方案 | AE dim | IoU chosen | Localization | vs baseline 3d IoU | vs baseline 3d Loc |
@@ -181,6 +215,7 @@
 | baseline (CLIP) | 3 | 0.6431 | 0.8983 | - | - |
 | baseline (CLIP) | 6 | 0.6285 | 0.8644 | -1.5% | -3.4% |
 | baseline (CLIP) | 12 | 0.6660 | 0.8814 | +2.3% | -1.7% |
+| baseline (CLIP) | 16 | 0.6401 | 0.8475 | -0.3% | -5.1% |
 | blend01 (90%C+10%D) | 3 | 0.5854 | 0.8814 | -5.8% | -1.7% |
 | blend02 (80%C+20%D) | 3 | 0.5844 | 0.8644 | -5.9% | -3.4% |
 | cross-attn fused (mse_cos) | 3 | 0.5351 | 0.8814 | -10.8% | -1.7% |
@@ -188,8 +223,12 @@
 | cross-attn fused (mse_cos) | 12 | 0.6609 | 0.8644 | -0.5% | -1.7% |
 | cross-attn fused (infonce) | 12 | 0.5270 | 0.8475 | -13.9% | -5.1% |
 | **cross-attn fused (mse_only)** | **12** | **0.6723** | **0.9153** | **+2.9%** | **+1.7%** |
+| cross-attn fused (mse_only) | 16 | 0.6698 | 0.8814 | +2.7% | -1.7% |
 
 > 结论: **MSE-only 损失 + 12d 是最优组合**，IoU=0.6723 首次超越 baseline 12d (0.6660, +0.6%)，Loc=0.9153 远超 baseline (0.8814, +3.4%)。
+> 16d 实验 (EXP-011/012) 确认 12d 为最优 AE 维度：fused 16d 饱和略降 (0.6698, -0.25pp)，baseline 16d 明显退化 (0.6401, -2.6pp)。
+> 但 fused 对 AE 维度更鲁棒：16d 下 fused 优势扩大至 +3.0pp IoU / +3.4pp Loc（12d 时仅 +0.6pp IoU）。
+> 维度规律: fused 单调上升至 12d 后饱和 (0.5351→0.6251→0.6609/0.6723→0.6698)；baseline 在 12d 达峰后退化 (0.6431→0.6285→0.6660→0.6401)。
 > 损失函数对比: mse_only (0.6723) > mse_cos (0.6609) > infonce (0.5270)。
 > InfoNCE 对比学习使特征过度偏离 CLIP 语义空间，AE 重建困难，下游 IoU 大幅下降。
 > MSE-only 去掉冗余 cos_sim 约束后，网络更自由学习融合，AE 重建更好 (loss 0.084 vs 0.092)。
