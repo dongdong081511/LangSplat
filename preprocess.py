@@ -118,13 +118,48 @@ class OpenCLIPNetwork(nn.Module):
         processed_input = self.process(input).half()
         return self.model.encode_image(processed_input)
 
+    def encode_image_dense(self, input, use_ln_post=True):
+        """MaskCLIP-style dense feature: last-block v-projection, mean over patches.
+        Bypasses q@k attention so features stay spatially grounded (no cls dominance)."""
+        import torch.nn.functional as F
+        x = self.process(input).half()
+        vit = self.model.visual
+        with torch.no_grad():
+            x = vit.conv1(x)
+            x = x.reshape(x.shape[0], x.shape[1], -1).permute(0, 2, 1)
+            cls = vit.class_embedding.to(x.dtype) + torch.zeros(
+                x.shape[0], 1, x.shape[-1], dtype=x.dtype, device=x.device)
+            x = torch.cat([cls, x], dim=1)
+            x = x + vit.positional_embedding.to(x.dtype)
+            x = vit.ln_pre(x)
+            x = x.permute(1, 0, 2)
+            blocks = vit.transformer.resblocks
+            for blk in blocks[:-1]:
+                x = blk(x)
+            attn = blocks[-1].attn
+            d = attn.embed_dim
+            if hasattr(attn, 'in_proj_weight') and attn.in_proj_weight is not None:
+                Wv = attn.in_proj_weight[2 * d:, :]
+                bv = attn.in_proj_bias[2 * d:]
+            else:
+                Wv = attn.qkv.weight[2 * d:, :]
+                bv = attn.qkv.bias[2 * d:]
+            v = F.linear(x, Wv, bv)
+            patch = v[1:]
+            feat = patch.mean(dim=0)
+            if use_ln_post:
+                feat = vit.ln_post(feat)
+            feat = feat @ vit.proj
+            feat = feat / feat.norm(dim=-1, keepdim=True)
+        return feat.float()
 
 
 
 
-def create(image_list, data_list, save_folder, extract_dino=False):
+
+def create(image_list, data_list, save_folder, extract_dino=False, dense=False, use_ln_post=True):
     assert image_list is not None, "image_list must be provided to generate features"
-    embed_size=512
+    embed_size = model.clip_n_dims
     dino_size = 768  # dinov2_vitb14
     seg_maps = []
     total_lengths = []
@@ -138,9 +173,9 @@ def create(image_list, data_list, save_folder, extract_dino=False):
         timer += 1
         try:
             if extract_dino:
-                img_embed, dino_embed, seg_map = _embed_clip_sam_tiles(img.unsqueeze(0), sam_encoder, extract_dino=True)
+                img_embed, dino_embed, seg_map = _embed_clip_sam_tiles(img.unsqueeze(0), sam_encoder, extract_dino=True, dense=dense, use_ln_post=use_ln_post)
             else:
-                img_embed, seg_map = _embed_clip_sam_tiles(img.unsqueeze(0), sam_encoder, extract_dino=False)
+                img_embed, seg_map = _embed_clip_sam_tiles(img.unsqueeze(0), sam_encoder, extract_dino=False, dense=dense, use_ln_post=use_ln_post)
         except:
             raise ValueError(timer)
 
@@ -203,7 +238,7 @@ def sava_numpy(save_path, data):
     np.save(save_path_s, data['seg_maps'].numpy())
     np.save(save_path_f, data['feature'].numpy())
 
-def _embed_clip_sam_tiles(image, sam_encoder, extract_dino=False):
+def _embed_clip_sam_tiles(image, sam_encoder, extract_dino=False, dense=False, use_ln_post=True):
     aug_imgs = torch.cat([image])
     seg_images, seg_map = sam_encoder(aug_imgs)
 
@@ -213,7 +248,10 @@ def _embed_clip_sam_tiles(image, sam_encoder, extract_dino=False):
         tiles = seg_images[mode]
         tiles = tiles.to("cuda")
         with torch.no_grad():
-            clip_embed = model.encode_image(tiles)
+            if dense:
+                clip_embed = model.encode_image_dense(tiles, use_ln_post=use_ln_post)
+            else:
+                clip_embed = model.encode_image(tiles)
         clip_embed /= clip_embed.norm(dim=-1, keepdim=True)
         clip_embeds[mode] = clip_embed.detach().cpu().half()
 
@@ -391,6 +429,13 @@ if __name__ == '__main__':
                         help='Also extract DINOv2 features per tile (saved as _f_dino.npy)')
     parser.add_argument('--save_subdir', type=str, default='language_features',
                         help='Subdirectory name for saving features')
+    parser.add_argument('--dense_tiles', action='store_true',
+                        help='MaskCLIP-style dense patch-token tile features instead of global embedding')
+    parser.add_argument('--no_ln_post', action='store_true',
+                        help='Skip ln_post in dense extraction (MaskCLIP original variant)')
+    parser.add_argument('--clip_model', type=str, default='ViT-B-16')
+    parser.add_argument('--clip_pretrained', type=str, default='laion2b_s34b_b88k')
+    parser.add_argument('--clip_n_dims', type=int, default=512)
     args = parser.parse_args()
     torch.set_default_dtype(torch.float32)
 
@@ -400,7 +445,10 @@ if __name__ == '__main__':
     data_list = os.listdir(img_folder)
     data_list.sort()
 
-    model = OpenCLIPNetwork(OpenCLIPNetworkConfig)
+    model = OpenCLIPNetwork(OpenCLIPNetworkConfig(
+        clip_model_type=args.clip_model,
+        clip_model_pretrained=args.clip_pretrained,
+        clip_n_dims=args.clip_n_dims))
     sam = sam_model_registry["vit_h"](checkpoint=sam_ckpt_path).to('cuda')
     mask_generator = SamAutomaticMaskGenerator(
         model=sam,
@@ -443,4 +491,4 @@ if __name__ == '__main__':
 
     save_folder = os.path.join(dataset_path, args.save_subdir)
     os.makedirs(save_folder, exist_ok=True)
-    create(imgs, data_list, save_folder, extract_dino=args.use_dino)
+    create(imgs, data_list, save_folder, extract_dino=args.use_dino, dense=args.dense_tiles, use_ln_post=not args.no_ln_post)

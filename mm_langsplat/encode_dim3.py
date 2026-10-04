@@ -37,7 +37,7 @@ def encode_features(dataset_path, data_subdir, out_subdir, ae_ckpt,
     os.makedirs(dst_dir, exist_ok=True)
 
     # Load AE
-    ae = Autoencoder(encoder_dims, decoder_dims)
+    ae = Autoencoder(encoder_dims, decoder_dims, input_dim=args.input_dim)
     ckpt = torch.load(ae_ckpt, map_location='cpu')
     ae.load_state_dict(ckpt)
     ae.eval()
@@ -87,6 +87,7 @@ if __name__ == '__main__':
     parser.add_argument('--ae_ckpt', type=str, required=True)
     parser.add_argument('--encoder_dims', nargs='+', type=int, default=[256, 128, 64, 32, 3])
     parser.add_argument('--decoder_dims', nargs='+', type=int, default=[16, 32, 64, 128, 256, 256, 512])
+    parser.add_argument('--input_dim', type=int, default=512)
     args = parser.parse_args()
 
     encode_features(args.dataset_path, args.data_subdir, args.out_subdir, args.ae_ckpt,

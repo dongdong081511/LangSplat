@@ -3,12 +3,12 @@ import torch.nn as nn
 
 
 class Autoencoder(nn.Module):
-    def __init__(self, encoder_hidden_dims, decoder_hidden_dims):
+    def __init__(self, encoder_hidden_dims, decoder_hidden_dims, input_dim=512):
         super(Autoencoder, self).__init__()
         encoder_layers = []
         for i in range(len(encoder_hidden_dims)):
             if i == 0:
-                encoder_layers.append(nn.Linear(512, encoder_hidden_dims[i]))
+                encoder_layers.append(nn.Linear(input_dim, encoder_hidden_dims[i]))
             else:
                 encoder_layers.append(torch.nn.BatchNorm1d(encoder_hidden_dims[i-1]))
                 encoder_layers.append(nn.ReLU())

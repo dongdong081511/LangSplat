@@ -4,8 +4,20 @@ import torchvision
 import open_clip
 
 
+PROMPT_TEMPLATES = (
+    'a photo of a {}',
+    'a photo of the {}',
+    'a photo of a large {}',
+    'a photo of a small {}',
+    'itap of a {}',
+    'a origami {}',
+    'art of the {}',
+)
+
+
 class OpenCLIPNetwork:
-    def __init__(self, device):
+    def __init__(self, device, clip_model_type="ViT-B-16", clip_model_pretrained='laion2b_s34b_b88k', clip_n_dims=512, relev_temp=10.0):
+        self.relev_temp = relev_temp
         self.process = torchvision.transforms.Compose(
             [
                 torchvision.transforms.Resize((224, 224)),
@@ -15,9 +27,9 @@ class OpenCLIPNetwork:
                 ),
             ]
         )
-        self.clip_model_type = "ViT-B-16"
-        self.clip_model_pretrained = 'laion2b_s34b_b88k'
-        self.clip_n_dims = 512
+        self.clip_model_type = clip_model_type
+        self.clip_model_pretrained = clip_model_pretrained
+        self.clip_n_dims = clip_n_dims
         model, _, _ = open_clip.create_model_and_transforms(
             self.clip_model_type,
             pretrained=self.clip_model_pretrained,
@@ -49,27 +61,38 @@ class OpenCLIPNetwork:
         repeated_pos = positive_vals.repeat(1, len(self.negatives))
 
         sims = torch.stack((repeated_pos, negative_vals), dim=-1)
-        softmax = torch.softmax(10 * sims, dim=-1)
+        softmax = torch.softmax(self.relev_temp * sims, dim=-1)
         best_id = softmax[..., 0].argmin(dim=1)
         return torch.gather(softmax, 1, best_id[..., None, None].expand(best_id.shape[0], len(self.negatives), 2))[
             :, 0, :
         ]
 
-    def encode_image(self, input, mask=None):
+    def encode_image(self, input):
         processed_input = self.process(input).half()
-        return self.model.encode_image(processed_input, mask=mask)
+        return self.model.encode_image(processed_input)
 
     def encode_text(self, text_list, device):
         text = self.tokenizer(text_list).to(device)
         return self.model.encode_text(text)
     
-    def set_positives(self, text_list):
+    def set_positives(self, text_list, use_templates=False):
         self.positives = text_list
         with torch.no_grad():
-            tok_phrases = torch.cat(
-                [self.tokenizer(phrase) for phrase in self.positives]
-                ).to(self.neg_embeds.device)
-            self.pos_embeds = self.model.encode_text(tok_phrases)
+            if use_templates:
+                # CLIP multi-template ensemble: mean of normalized per-template embeddings
+                embed_list = []
+                for phrase in self.positives:
+                    tok = torch.cat([self.tokenizer(t.format(phrase)) for t in PROMPT_TEMPLATES]
+                                    ).to(self.neg_embeds.device)
+                    emb = self.model.encode_text(tok)
+                    emb = emb / emb.norm(dim=-1, keepdim=True)
+                    embed_list.append(emb.mean(dim=0))
+                self.pos_embeds = torch.stack(embed_list)
+            else:
+                tok_phrases = torch.cat(
+                    [self.tokenizer(phrase) for phrase in self.positives]
+                    ).to(self.neg_embeds.device)
+                self.pos_embeds = self.model.encode_text(tok_phrases)
         self.pos_embeds /= self.pos_embeds.norm(dim=-1, keepdim=True)
     
     def set_semantics(self, text_list):
@@ -88,7 +111,7 @@ class OpenCLIPNetwork:
         sem_pred = torch.zeros(n_levels, h, w)
         for i in range(n_levels):
             output = torch.mm(sem_map[i].view(-1, c), p.T)
-            softmax = torch.softmax(10 * output, dim=-1)
+            softmax = torch.softmax(self.relev_temp * output, dim=-1)
             sem_pred[i] = torch.argmax(softmax, dim=-1).view(h, w)
             sem_pred[i][sem_pred[i] >= pos_num] = -1
         return sem_pred.long()
@@ -96,17 +119,24 @@ class OpenCLIPNetwork:
     def get_max_across(self, sem_map):
         n_phrases = len(self.positives)
         n_phrases_sims = [None for _ in range(n_phrases)]
-        
+
         n_levels, h, w, _ = sem_map.shape
         clip_output = sem_map.permute(1, 2, 0, 3).flatten(0, 1)
+
+        # dual-stream score fusion: dino_state['embeds'] = (n_levels, h*w, 512) aligned DINO embeds
+        dino = getattr(self, 'dino_state', None)
 
         n_levels_sims = [None for _ in range(n_levels)]
         for i in range(n_levels):
             for j in range(n_phrases):
                 probs = self.get_relevancy(clip_output[..., i, :], j)
                 pos_prob = probs[..., 0:1]
+                if dino is not None:
+                    dino_prob = self.get_relevancy(dino['embeds'][i], j)[..., 0:1]
+                    lam = dino['lambda']
+                    pos_prob = (1 - lam) * pos_prob + lam * dino_prob
                 n_phrases_sims[j] = pos_prob
             n_levels_sims[i] = torch.stack(n_phrases_sims)
-        
+
         relev_map = torch.stack(n_levels_sims).view(n_levels, n_phrases, h, w)
         return relev_map

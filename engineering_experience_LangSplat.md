@@ -1,7 +1,7 @@
 # LangSplat 工程经验总结
 
 > 本文档记录 LangSplat 多模态融合实验中积累的工程经验，避免重复试错。
-> 最后更新: 2026-09-19 (分支: experiment/crossattn-mm)
+> 最后更新: 2026-09-21 (分支: experiment/crossattn-mm)
 
 ---
 
@@ -189,12 +189,15 @@ export NVCC_PREPEND_FLAGS="-ccbin /usr/bin/g++-11"
 | **fused (mse_only)** | **12** | **0.6723** | **0.9153** | **首次超越 baseline** |
 | baseline | 16 | 0.6401 | 0.8475 | baseline 超过 12d 后退化 |
 | fused (mse_only) | 16 | 0.6698 | 0.8814 | fused 饱和略降，仍超 baseline +3.0% |
+| **baseline** | **8** | **0.6705** | **0.8814** | **baseline 新最优（超过 12d，EXP-018）** |
+| fused (mse_only) | 8 | 0.6375 | 0.8644 | fused 需 ≥12d，8d 明显退化 |
 
 - **3d 瓶颈是不成比例损害 fused 特征的根本原因**
-- fused IoU 随维度单调上升至 12d 后饱和: 3d 0.5351 → 6d 0.6251 → 12d 0.6609/0.6723 → 16d 0.6698
-- baseline 在 12d 达峰后退化: 6d 0.6285 → 3d 0.6431 → 12d 0.6660 → 16d 0.6401
+- fused IoU 随维度上升至 12d 后饱和: 3d 0.5351 → 6d 0.6251 → **8d 0.6375 (下限敏感)** → 12d 0.6609/0.6723 → 16d 0.6698
+- **fused 对维度下限敏感、对上限鲁棒**: 12d→8d 降 3.5pp，12d→16d 仅降 0.25pp——融合特征信息量大，需要足够维度承载
+- baseline 维度曲线 (EXP-018 修正): 6d 0.6285 → 3d 0.6431 → 16d 0.6401 → 12d 0.6660 → **8d 0.6705 (最优)**
 - **fused 对 AE 维度更鲁棒**: 12d→16d，baseline 退化 -2.6pp，fused 仅 -0.25pp，fused 优势扩大至 +3.0pp IoU / +3.4pp Loc
-- **DINOv2 融合增益依赖: 损失函数设计 (MSE-only) + AE 维度 (12d) 共同作用**
+- **DINOv2 融合增益依赖: 损失函数设计 (MSE-only) + AE 维度 ≥12d 共同作用**；8d 时 baseline 反超 fused（EXP-018）
 
 ---
 
@@ -242,6 +245,31 @@ export NVCC_PREPEND_FLAGS="-ccbin /usr/bin/g++-11"
 - **原因**: `language_feature_precomp` 分配 3 元素，但 12d kernel 读取 12 元素
 - **解决**: 分配 `torch.zeros((N, 12))` 匹配维度
 
+### 8.7 语言特征维度硬编码 (改维度必须全改)
+- **位置**: ① submodules/langsplat-rasterization/cuda_rasterizer/config.h NUM_CHANNELS_language_feature
+  ② gaussian_renderer/__init__.py (~L93 language_feature_precomp zeros)
+  ③ scene/gaussian_model.py (~L206 language_feature zeros)
+- **现象**: config.h 改回 12 但 py 侧残留 16 → backward 梯度 [N,12] vs 期望 [N,16] 报错
+- **解决**: 改维度时三处同步改，然后 `pip install -e . --no-build-isolation` 重编译
+
+### 8.8 第三模态 tile 特征行数对齐
+- **原因**: _f.npy 行数 = seg_map.max()+1（每帧不同 ~295-305，非固定 300）
+- **现象**: 深度特征写死 [300,8] → valid mask 索引报 boolean dimension mismatch
+- **解决**: 按 seg_map.max()+1 生成特征行数，加载后校验 shape 与 _f.npy 一致
+
+### 8.10 辅助损失权重与 CLIP 兼容性的此消彼长 (EXP-015/016)
+- **现象**: depth 辅助损失 λ=1.0 → cos_sim 0.86 → IoU 0.16 (崩塌); λ=0.1 → cos_sim 0.94 → IoU 0.56; λ=0 → cos_sim 0.98 → IoU 0.65
+- **教训**: 凡把 fused 拉离 CLIP 空间的损失项 (InfoNCE / 强辅助损失) 都会灾难性损害下游开放词汇查询
+- **验证方法**: 训练融合网络后先看 cos_sim，<0.95 基本注定下游失败，无需跑完 1 小时管线
+
+### 8.11 后台编译与 config.h 并行修改的竞态
+- **现象**: pip 重编译 (后台) 与 Edit config.h 并行执行，编译产物通道数不确定 → 训练 illegal memory access
+- **规则**: 改 config.h 必须先确认写入成功 (grep 验证)，再启动编译；编译后用一次训练迭代验证通道数
+
+### 8.9 pkill 误杀自身 shell
+- **原因**: `pkill -f <模式>` 匹配包含该模式的自身 bash 命令行 → exit -1，后续启动命令未执行
+- **解决**: 长训练用 `setsid nohup ... &` 脱离会话；避免 pkill 与启动放在同一条命令
+
 ### 8.6 后台任务看不到输出
 - **原因**: `conda run` 缓冲 stdout
 - **解决**: 直接用 `python -u` + `| tail -N` (输出在命令结束后写入日志)
@@ -255,6 +283,7 @@ dataset/lerf_ovs/teatime/
 ├── language_features/              # CLIP 512d (原始)
 ├── language_features_mm/            # CLIP + DINOv2 (_f.npy + _f_dino.npy)
 ├── language_features_fused/         # 融合后 512d
+├── language_features_fused3/        # 三模态融合后 512d (EXP-013)
 ├── language_features_dim12/         # AE 编码后 12d (baseline)
 ├── language_features_dim12_fused/   # AE 编码后 12d (fused)
 └── output/teatime_-1/              # 基线 Gaussian (chkpnt30000.pth 作为 start_checkpoint)
@@ -282,3 +311,68 @@ dataset/lerf_ovs/label/
 3. **维度排序**: 12d > 16d > 6d > 3d (对 fused); 12d > 3d > 16d > 6d (对 baseline)
 4. **DINOv2 有增益**: 但需 损失函数 + AE 维度 共同作用，三者缺一不可
 5. **实验记录**: 所有参数和结果追加写入 `hyper_parameter.md`，不替换历史数据
+
+
+### 8.12 AE 编码竞态：特征编码必须晚于 AE 训练收敛 (EXP-017)
+- **现象**: figurines baseline 首次 eval IoU=0.0194 / Loc=0.0179 (随机水平)，且对 mask_thresh 扫描完全不敏感
+- **根因**: `mm_langsplat/encode_dim3.py` 在 AE 训练尚未收敛时执行 (dim12 编码 18:14，AE best_ckpt 19:13 才最终保存)，3D GS 用过期权重编码的特征训练，全链条判别结构损毁
+- **定位方法 (三源对照法，推荐)**: 对同一 eval 帧，用 eval 完全相同的 relevancy 路径 (get_max_across + softmax) 分别测：
+  1. 原始 2D CLIP 特征 → figurines frame_00041 IoU=0.593 (特征本身健康)
+  2. AE 往返 (过期编码文件 decode) → IoU=0.063 (崩溃在 AE 环节)
+  3. 3D 渲染 decode → IoU=0.025 (与 eval 一致)
+  - 用最终 ckpt 现场重编码再 decode → IoU=0.669，确认修复
+- **关键陷阱**: 平均 cos_sim 无法发现此问题 (过期编码 decode cos=0.927 看似健康，但判别结构已毁——再次验证"平均重建好 ≠ 下游好")；必须用下游 relevancy/IoU 验证
+- **预防规则**: AE 训练完成后，核对 `stat` 时间戳：encode 输出文件的 mtime 必须 > best_ckpt.pth 的 mtime，否则重跑 encode。AE 训练分两次跑 (两个 tfevents) 时尤其高危
+- **辅助定位经验**: 崩溃排查顺序 = ①可视化叠加图确认视角对齐 (composited vs 原图) ②高 relevancy 查询 (pikachu IoU=0.977@2D) 证明特征健康 ③三源对照锁定环节
+
+### 8.13 维度不匹配错误的双向诊断法 (EXP-022 教训)
+- **报错格式**: `backward returned an invalid gradient at index 4 - got [N,8] but expected [N,24]`
+- **语义**: `got` = backward 返回的 dL 分配 shape (**C++ 侧** NUM_CHANNELS_language_feature 编译值); `expected` = forward 输入 grad shape (**Python 侧** zeros 维度)
+- **诊断规则**: 看 got 判断 C++ kernel 实际状态, 看 expected 判断 Python 侧状态——方向搞反会误判"编译没生效"
+- **案例**: got [N,8]/expected [N,24] 时 C++ 已是 8d, 真凶是 python 侧未改——差点重复全量重编
+
+### 8.14 pip install -e 重编译的三重坑 (EXP-022)
+- **坑1 增量假编译**: setuptools 不可靠跟踪头文件 (config.h) 变更, .cu 未重编但 .so 时间戳更新 (25 秒"编译完成"), 产物可能是旧 kernel + 新 zeros 的混合状态 (forward/backward 模板 24d + rasterize_points zeros 8d), 训练报 illegal access 或形状错误
+- **坑2 CUDA 304**: rm -rf build 后 torch 需运行时探测 GPU 架构触发 CUDA init → 沙箱 304。解决: `export TORCH_CUDA_ARCH_LIST="8.9"` 显式指定
+- **坑3 editable .so 混乱**: PEP 660 editable wheel 产物位置不定 (build/lib vs 源码树), finder 映射可能与实际 .so 不一致
+- **可靠编译流程**: `rm -rf build && python setup.py build_ext --inplace` (产物固定在源码树 diff_gaussian_rasterization/), 编译后必须 100s 冒烟训练验证维度
+
+### 8.15 python 脚本 patch 文件的原子性
+- **教训**: 一个脚本里多次 str.replace + assert, 若中途 assert 失败, 前面已修改的内存变量未写盘 → 部分 patch 静默丢失
+- **解决**: 每次修改独立脚本独立写入; 或 assert 全部通过后再统一写入; 修改后必须 grep 验证
+- **案例**: evaluate_iou_loc.py CLI patch 因 old_call assert 失败导致 CLI 参数丢失, eval 报 unrecognized arguments
+
+### 8.16 SAM preprocess 不能双场景并行 (EXP-022)
+- **现象**: teatime+figurines 两个 preprocess.py 同时启动, 双双卡在 0it (CPU 后处理争抢互卡)
+- **解决**: preprocess 严格串行 (~19.4s/it 正常), GPU 训练任务才可并行
+
+### 8.17 score 级融合的温度敏感性 (EXP-023)
+- **现象**: 双流 score 融合 λ 单调劣化 (0.6705 → λ0.3 0.5536 → λ0.5 0.6107 非单调但均降), DINO 投影流为纯噪声
+- **机制**: 对齐层高 cos_sim (0.9256) ≠ 判别力——整体相似只保证投影落进 CLIP 空间, 不保证 tile 间区分; get_relevancy 的 softmax(10·sims) 温度下, 弱判别流的分布平坦, 融合后稀释 CLIP 尖峰
+- **验证方法**: 注入新模态前先检查投影特征的 tile 间相似度方差 (判别性指标), 方差接近 0 的流注入必失败, 无需跑 2 小时管线
+- **评估协议注意**: 换 dataset_name 做 λ 扫描时 feat_dir/output/label 三处目录名联动, 需要 renders 软链接 + label 软链接配套, 否则 IndexError/UnboundLocalError
+
+### 8.18 tile 级 mean-pool 会抹掉 dense 特征的空间选择性 (EXP-025)
+- **现象**: MaskCLIP 式 dense 特征 (末层 v-projection) 对每个 SAM tile 内 ~196 个 patch 取 mean 后, 2D tile 级 relevancy IoU 从 0.44/0.54 崩到 0.03 (-40pp), 无论是否模板 ensemble
+- **机制**: MaskCLIP dense 的价值在 per-patch 2D map; 对任意形状 tile 取均值 = 聚合粒度不变 (仍 1 tile 1 向量) 但特征判别方差坍缩 4× (pos_sim std 0.010 vs 0.037)——均值化丢掉的恰是它相对 global embedding 的全部优势
+- **诊断方法**: 注入/替换特征前先测文本相似度的 tile 间 std 与 relev 动态范围 (p95-p5), 坍缩特征免跑全链条 (8.17 方法的推广)
+- **反直觉发现**: 3D 渲染特征 (AE+多视角+per-pixel) 比分段常数 tile 图高 +23pp——"2D tile 级上限" 对 3D 管线不是上限而是下限参考, 评估 2D 特征替换价值时不能只看 tile map 对比
+- **快速 smooth 复刻**: eval/utils.smooth 的 7×7 majority 逐像素循环 (~1.3s/mask) 可用积分图精确复刻 (含 min(i+s, h-1) 独占上界的边界行为与 tie→0), 0.012s/mask, 已逐像素验证一致 (eval/dense_upper_test.py)
+
+### 8.19 判别性快测必须同时看方差与空间对齐 (EXP-026)
+- **教训**: EXP-025 用 pos_sim std 判死 tile-mean (0.010, 坍缩) 是对的; 但 EXP-026 per-patch std=0.0266 (不坍缩) 依然全灭——方差只证明"特征有差异", 不证明"差异是物体相关的"
+- **完整判据**: 判别性快测需要三件套: ① tile/patch 级 pos_sim std (方差) ② 大物体 GT 内外 relev 差 (rel_in vs rel_out, 空间对齐) ③ 协议内 IoU。三者全过才值得跑管线
+- **背景知识**: CLIP patch 特征与 text 的余弦相似度没有空间 grounding——CLIP 的对比训练只对齐 global image-text, 这是模型性质不是聚合协议性质; 换任何 CLIP 变体 (L/14, SigLIP, EVA) 的 dense patch 都会是同样结果 (EXP-022/025/026 三角互证)
+- **滑窗 dense map 快测模板**: 224 crop + stride 112 + patch 块赋值 + 重叠均值 + 再归一化, 每 16px 一特征, eval/dense_patch_upper_test.py 可直接复用于任何教师候选
+
+### 8.20 图像端与 text 端改进不可叠加 (EXP-027)
+- **发现**: tile 编码填充方案 (blur/black) 在无模板 eval 下 +2~4pp, 但 +7模板 ensemble 后全部低于原特征 (-3~-7pp)——模板 ensemble 的收益依赖黑背景特征的"极化"分布
+- **方法论**: 评估任何图像端编码改进必须同时跑 ±templates, 只看无模板数字会误判方向 (SOTA 协议带 ensemble)
+- **快测基建**: _s.npy 可直接反推每 tile 像素 mask (s[li]==t), 免重跑 SAM 即可做任何 tile 级编码方案的免训练快测 (eval/masked_pool_test.py)
+- **死代码炸弹**: eval/openclip_encoder.py 曾有 encode_image(mask=None) 无条件转发给不支持的底层 open_clip——无调用方所以长期潜伏, 新脚本一旦调用即 TypeError; 修复已做, 引以为戒: 改公共封装要 grep 全部调用方
+
+## 8.21 EXP-031/032 流水线三坑 (2026-09-29)
+- AE ckpt 保存门槛: autoencoder/train.py 仅在 epoch>95 时评估并保存 best_ckpt; --num_epochs 20 会导致训练正常完成但永远不落盘 (best_loss 显示初始值 100 假象, 误判为发散)。AE 必须用默认 100 epochs
+- AE lr: 历史全部用默认 1e-4; 传 0.001 会真发散 (loss NaN)
+- train.py 的 -m 约定: -m 只传不含 level 的基名 (如 output/teatime_xxx), train.py L226 自动追加 _<feature_level>; 若 -m 已含 level (output/teatime_xxx_1) 产物会落 _1_1, 后续 render/eval 路径全断
+- 流水线防呆: 每步产物校验 (ls ckpt/render 计数) + set -e 是正确设计, 三次失败都在校验点被截停, 未污染下游

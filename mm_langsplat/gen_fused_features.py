@@ -45,6 +45,7 @@ def generate_fused(feat_dir, out_dir, ckpt_path):
     model = TileCrossAttentionFusion(
         dim_clip=config['dim_clip'],
         dim_dino=config['dim_dino'],
+        dim_depth=config.get('dim_depth', 0),
         d_unified=config['d_unified'],
         d_out=config['d_out'],
         n_heads=config['n_heads'],
@@ -52,11 +53,12 @@ def generate_fused(feat_dir, out_dir, ckpt_path):
     ).to(device)
     model.load_state_dict(ckpt['model_state_dict'])
     model.eval()
-    print(f'Loaded fusion network from {ckpt_path}')
+    use_depth = config.get('dim_depth', 0) > 0
+    print(f'Loaded fusion network from {ckpt_path} (depth modality: {use_depth})')
 
     # Process each image
     f_files = sorted(glob.glob(os.path.join(feat_dir, '*_f.npy')))
-    f_files = [f for f in f_files if not f.endswith('_dino.npy')]
+    f_files = [f for f in f_files if f.endswith('_f.npy')]
 
     total_cos_sim = 0.0
     count = 0
@@ -66,6 +68,13 @@ def generate_fused(feat_dir, out_dir, ckpt_path):
         dino_path = os.path.join(feat_dir, basename + '_f_dino.npy')
         s_path = os.path.join(feat_dir, basename + '_s.npy')
 
+        depth_path = os.path.join(feat_dir, basename + '_f_depth.npy')
+        if use_depth and not os.path.exists(depth_path):
+            print(f'WARNING: depth not found for {basename}, copying CLIP as-is')
+            shutil.copy(f_path, os.path.join(out_dir, basename + '_f.npy'))
+            shutil.copy(s_path, os.path.join(out_dir, basename + '_s.npy'))
+            continue
+
         if not os.path.exists(dino_path):
             print(f'WARNING: DINO not found for {basename}, copying CLIP as-is')
             shutil.copy(f_path, os.path.join(out_dir, basename + '_f.npy'))
@@ -74,13 +83,15 @@ def generate_fused(feat_dir, out_dir, ckpt_path):
 
         clip_feat = np.load(f_path)  # [num_tiles, 512]
         dino_feat = np.load(dino_path)  # [num_tiles, 768]
+        depth_feat = np.load(depth_path) if use_depth else None  # [num_tiles, 8]
 
         clip_t = torch.from_numpy(clip_feat).float().to(device)
         dino_t = torch.from_numpy(dino_feat).float().to(device)
+        depth_t = torch.from_numpy(depth_feat).float().to(device) if use_depth else None
 
         # Run fusion (inference, no dropout)
         with torch.no_grad():
-            fused = model(clip_t, dino_t, is_training=False)
+            fused = model(clip_t, dino_t, depth_t, is_training=False)
             # Track similarity to CLIP for diagnostics
             if count < 5:
                 cos_sim = F.cosine_similarity(fused, clip_t, dim=-1).mean()

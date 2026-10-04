@@ -217,7 +217,7 @@ def lerf_localization(sem_map, image, clip_model, image_name, img_ann):
     return acc_num
 
 
-def evaluate(feat_dir, output_path, ae_ckpt_path, json_folder, mask_thresh, encoder_hidden_dims, decoder_hidden_dims, logger):
+def evaluate(feat_dir, output_path, ae_ckpt_path, json_folder, mask_thresh, encoder_hidden_dims, decoder_hidden_dims, logger, clip_model_type="ViT-B-16", clip_model_pretrained='laion2b_s34b_b88k', clip_n_dims=512, ae_input_dim=512, dual_cfg=None, relev_temp=10.0, prompt_ensemble=False):
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     colormap_options = colormaps.ColormapOptions(
@@ -229,7 +229,8 @@ def evaluate(feat_dir, output_path, ae_ckpt_path, json_folder, mask_thresh, enco
 
     gt_ann, image_shape, image_paths = eval_gt_lerfdata(Path(json_folder), Path(output_path))
     eval_index_list = [int(idx) for idx in list(gt_ann.keys())]
-    compressed_sem_feats = np.zeros((len(feat_dir), len(eval_index_list), *image_shape, encoder_hidden_dims[-1]), dtype=np.float32)
+    total_feat_dim = dual_cfg['total_dim'] if dual_cfg else encoder_hidden_dims[-1]
+    compressed_sem_feats = np.zeros((len(feat_dir), len(eval_index_list), *image_shape, total_feat_dim), dtype=np.float32)
     for i in range(len(feat_dir)):
         feat_paths_lvl = sorted(glob.glob(os.path.join(feat_dir[i], '*.npy')),
                                key=lambda file_name: int(os.path.basename(file_name).split(".npy")[0]))
@@ -237,11 +238,24 @@ def evaluate(feat_dir, output_path, ae_ckpt_path, json_folder, mask_thresh, enco
             compressed_sem_feats[i][j] = np.load(feat_paths_lvl[idx])
 
     # instantiate autoencoder and openclip
-    clip_model = OpenCLIPNetwork(device)
+    clip_model = OpenCLIPNetwork(device, clip_model_type=clip_model_type, clip_model_pretrained=clip_model_pretrained, clip_n_dims=clip_n_dims, relev_temp=relev_temp)
     checkpoint = torch.load(ae_ckpt_path, map_location=device)
-    model = Autoencoder(encoder_hidden_dims, decoder_hidden_dims).to(device)
+    model = Autoencoder(encoder_hidden_dims, decoder_hidden_dims, input_dim=ae_input_dim).to(device)
     model.load_state_dict(checkpoint)
     model.eval()
+
+    # dual-stream setup: CLIP AE (main) + DINO AE + linear alignment W
+    dino_ae, align_W = None, None
+    if dual_cfg:
+        dino_ckpt = torch.load(dual_cfg['dino_ae_ckpt'], map_location=device)
+        dino_ae = Autoencoder(dual_cfg['dino_encoder_dims'], dual_cfg['dino_decoder_dims'],
+                              input_dim=dual_cfg['dino_input_dim']).to(device)
+        dino_ae.load_state_dict(dino_ckpt)
+        dino_ae.eval()
+        align_state = torch.load(dual_cfg['align_ckpt'], map_location=device)
+        align_W = align_state['proj.weight'].to(device).float()   # (512, 768)
+        logger.info(f"dual-stream: lambda={dual_cfg['lambda']}, n_clip={encoder_hidden_dims[-1]}, "
+                    f"n_dino={dual_cfg['dino_encoder_dims'][-1]}")
 
     chosen_iou_all, chosen_lvl_list = [], []
     acc_num = 0
@@ -257,11 +271,26 @@ def evaluate(feat_dir, output_path, ae_ckpt_path, json_folder, mask_thresh, enco
 
         with torch.no_grad():
             lvl, h, w, _ = sem_feat.shape
-            restored_feat = model.decode(sem_feat.flatten(0, 2))
-            restored_feat = restored_feat.view(lvl, h, w, -1)           # 3x832x1264x512
+            if dual_cfg:
+                import torch.nn.functional as F
+                n_clip = encoder_hidden_dims[-1]
+                clip_seg = sem_feat[..., :n_clip]
+                dino_seg = sem_feat[..., n_clip:]
+                restored_feat = model.decode(clip_seg.flatten(0, 2)).view(lvl, h, w, -1)  # CLIP stream untouched
+                dino_dec = dino_ae.decode(dino_seg.flatten(0, 2))                          # (lvl*h*w, 768)
+                dino_proj = dino_dec @ align_W.T                                           # -> CLIP text space
+                dino_proj = F.normalize(dino_proj.float(), dim=-1)
+                clip_model.dino_state = {
+                    'embeds': dino_proj.view(lvl, h * w, -1),
+                    'lambda': dual_cfg['lambda'],
+                }
+            else:
+                clip_model.dino_state = None
+                restored_feat = model.decode(sem_feat.flatten(0, 2))
+                restored_feat = restored_feat.view(lvl, h, w, -1)           # 3x832x1264x512
         
         img_ann = gt_ann[f'{idx}']
-        clip_model.set_positives(list(img_ann.keys()))
+        clip_model.set_positives(list(img_ann.keys()), use_templates=prompt_ensemble)
         
         c_iou_list, c_lvl = activate_stream(restored_feat, rgb_img, clip_model, image_name, img_ann,
                                             thresh=mask_thresh, colormap_options=colormap_options)
@@ -275,6 +304,7 @@ def evaluate(feat_dir, output_path, ae_ckpt_path, json_folder, mask_thresh, enco
     mean_iou_chosen = sum(chosen_iou_all) / len(chosen_iou_all)
     logger.info(f'trunc thresh: {mask_thresh}')
     logger.info(f"iou chosen: {mean_iou_chosen:.4f}")
+    logger.info(f"mIoU (multi-prompt mean): {mean_iou_chosen:.4f}")
     logger.info(f"chosen_lvl: \n{chosen_lvl_list}")
 
     # localization acc
@@ -283,6 +313,7 @@ def evaluate(feat_dir, output_path, ae_ckpt_path, json_folder, mask_thresh, enco
         total_bboxes += len(list(img_ann.keys()))
     acc = acc_num / total_bboxes
     logger.info("Localization accuracy: " + f'{acc:.4f}')
+    logger.info("mAcc (localization accuracy): " + f'{acc:.4f}')
 
 
 def seed_everything(seed_value):
@@ -309,6 +340,10 @@ if __name__ == "__main__":
     parser.add_argument("--output_dir", type=str, default=None)
     parser.add_argument("--json_folder", type=str, default=None)
     parser.add_argument("--mask_thresh", type=float, default=0.4)
+    parser.add_argument("--relev_temp", type=float, default=10.0,
+                        help="softmax temperature in relevancy (LangSplat default 10)")
+    parser.add_argument("--prompt_ensemble", action="store_true",
+                        help="CLIP multi-template ensemble for positive prompts")
     parser.add_argument('--encoder_dims',
                         nargs = '+',
                         type=int,
@@ -319,6 +354,20 @@ if __name__ == "__main__":
                         type=int,
                         default=[16, 32, 64, 128, 256, 256, 512],
                         )
+    parser.add_argument('--clip_model', type=str, default='ViT-B-16')
+    parser.add_argument('--clip_pretrained', type=str, default='laion2b_s34b_b88k')
+    parser.add_argument('--clip_n_dims', type=int, default=512)
+    parser.add_argument('--ae_input_dim', type=int, default=512)
+    # dual-stream options
+    parser.add_argument('--dual', action='store_true')
+    parser.add_argument('--clip_ae_ckpt', type=str, default=None,
+                        help='explicit main (CLIP) AE ckpt path; overrides ae_ckpt_dir join')
+    parser.add_argument('--dino_ae_ckpt', type=str, default=None)
+    parser.add_argument('--dino_encoder_dims', nargs='+', type=int, default=[256, 128, 64, 32, 8])
+    parser.add_argument('--dino_decoder_dims', nargs='+', type=int, default=[16, 32, 64, 128, 256, 256, 768])
+    parser.add_argument('--dino_input_dim', type=int, default=768)
+    parser.add_argument('--align_ckpt', type=str, default=None)
+    parser.add_argument('--dino_lambda', type=float, default=0.5)
     args = parser.parse_args()
 
     # NOTE config setting
@@ -326,8 +375,23 @@ if __name__ == "__main__":
     mask_thresh = args.mask_thresh
     feat_dir = [os.path.join(args.feat_dir, dataset_name+f"_{i}", "train/ours_None/renders_npy") for i in range(1,4)]
     output_path = os.path.join(args.output_dir, dataset_name)
-    ae_ckpt_path = os.path.join(args.ae_ckpt_dir, dataset_name, "ae_ckpt/best_ckpt.pth")
+    ae_ckpt_path = args.clip_ae_ckpt if args.clip_ae_ckpt else os.path.join(
+        args.ae_ckpt_dir, dataset_name, "ae_ckpt/best_ckpt.pth")
     json_folder = os.path.join(args.json_folder, dataset_name)
+
+    dual_cfg = None
+    if args.dual:
+        assert args.dino_ae_ckpt and args.align_ckpt and args.clip_ae_ckpt, \
+            "--dual requires --clip_ae_ckpt, --dino_ae_ckpt, --align_ckpt"
+        dual_cfg = {
+            'dino_ae_ckpt': args.dino_ae_ckpt,
+            'dino_encoder_dims': args.dino_encoder_dims,
+            'dino_decoder_dims': args.dino_decoder_dims,
+            'dino_input_dim': args.dino_input_dim,
+            'align_ckpt': args.align_ckpt,
+            'lambda': args.dino_lambda,
+            'total_dim': args.encoder_dims[-1] + args.dino_encoder_dims[-1],
+        }
 
     # NOTE logger
     timestamp = time.strftime('%Y%m%d_%H%M%S', time.localtime())
@@ -335,4 +399,7 @@ if __name__ == "__main__":
     log_file = os.path.join(output_path, f'{timestamp}.log')
     logger = get_logger(f'{dataset_name}', log_file=log_file, log_level=logging.INFO)
 
-    evaluate(feat_dir, output_path, ae_ckpt_path, json_folder, mask_thresh, args.encoder_dims, args.decoder_dims, logger)
+    evaluate(feat_dir, output_path, ae_ckpt_path, json_folder, mask_thresh, args.encoder_dims, args.decoder_dims, logger,
+             clip_model_type=args.clip_model, clip_model_pretrained=args.clip_pretrained,
+             clip_n_dims=args.clip_n_dims, ae_input_dim=args.ae_input_dim, dual_cfg=dual_cfg,
+             relev_temp=args.relev_temp, prompt_ensemble=args.prompt_ensemble)

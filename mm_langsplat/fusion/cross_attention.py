@@ -26,17 +26,19 @@ class TileCrossAttentionFusion(nn.Module):
     Args:
         dim_clip: CLIP feature dim (512)
         dim_dino: DINOv2 feature dim (768 for vitb14, 1024 for vitl14)
+        dim_depth: depth statistic dim (8), 0 disables depth modality
         d_unified: unified intermediate dim (256)
         d_out: output dim (512, CLIP-compatible)
         n_heads: attention heads (4)
         dropout: CLIP input dropout rate during training (0.3)
     """
 
-    def __init__(self, dim_clip=512, dim_dino=768, d_unified=256,
+    def __init__(self, dim_clip=512, dim_dino=768, dim_depth=0, d_unified=256,
                  d_out=512, n_heads=4, dropout=0.3):
         super().__init__()
         self.dim_clip = dim_clip
         self.dim_dino = dim_dino
+        self.dim_depth = dim_depth
         self.d_unified = d_unified
         self.d_out = d_out
 
@@ -49,6 +51,17 @@ class TileCrossAttentionFusion(nn.Module):
             nn.Linear(dim_dino, d_unified),
             nn.LayerNorm(d_unified),
         )
+
+        # Third modality: depth statistics (8-dim) -> unified dim
+        if dim_depth > 0:
+            self.proj_depth = nn.Sequential(
+                nn.Linear(dim_depth, d_unified),
+                nn.LayerNorm(d_unified),
+            )
+            # Cross-attention: fused CLIP query, depth as K/V
+            self.cross_attn_depth = nn.MultiheadAttention(
+                d_unified, n_heads, batch_first=True, dropout=0.1)
+            self.norm4 = nn.LayerNorm(d_unified)
 
         # Self-attention on CLIP tiles (cross-tile context)
         self.self_attn = nn.MultiheadAttention(
@@ -76,19 +89,33 @@ class TileCrossAttentionFusion(nn.Module):
             nn.Linear(d_unified, d_out),
         )
 
+        # Auxiliary depth decoder (training only): reconstructs the depth
+        # statistics from the fused 512d output, forcing depth information
+        # to survive inside the fused feature.
+        if dim_depth > 0:
+            self.depth_decoder = nn.Sequential(
+                nn.Linear(d_out, 128),
+                nn.LayerNorm(128),
+                nn.Linear(128, dim_depth),
+            )
+
         # CLIP input dropout for training (forces learning from DINOv2)
         self.clip_dropout = nn.Dropout(dropout)
 
-    def forward(self, clip_feat, dino_feat, is_training=False):
-        """Fuse CLIP and DINOv2 features.
+    def forward(self, clip_feat, dino_feat, depth_feat=None, is_training=False,
+                return_depth=False):
+        """Fuse CLIP and DINOv2 features (optionally depth).
 
         Args:
             clip_feat: [num_tiles, 512] CLIP features (unit normalized)
             dino_feat: [num_tiles, 768] DINOv2 features (unit normalized)
+            depth_feat: [num_tiles, dim_depth] depth statistics (optional)
             is_training: if True, apply dropout to CLIP input
+            return_depth: if True and depth enabled, also return decoded depth
 
         Returns:
             fused: [num_tiles, 512] fused features (unit normalized)
+            (optional) decoded_depth: [num_tiles, dim_depth]
         """
         # Dropout on CLIP during training
         if is_training:
@@ -112,6 +139,12 @@ class TileCrossAttentionFusion(nn.Module):
         cross_out, _ = self.cross_attn(q, kv_b, kv_b)
         q = self.norm2(q + cross_out)  # [1, num_tiles, d_unified]
 
+        # Third modality: depth as K/V (sequential injection after DINOv2)
+        if self.dim_depth > 0 and depth_feat is not None:
+            d_b = self.proj_depth(depth_feat).unsqueeze(0)  # [1, num_tiles, d_unified]
+            depth_out, _ = self.cross_attn_depth(q, d_b, d_b)
+            q = self.norm4(q + depth_out)
+
         # FFN
         q = self.norm3(q + self.ffn(q))  # [1, num_tiles, d_unified]
 
@@ -120,6 +153,13 @@ class TileCrossAttentionFusion(nn.Module):
 
         # Normalize
         out = F.normalize(out, dim=-1)
+
+        if return_depth:
+            if self.dim_depth > 0:
+                decoded = self.depth_decoder(out)
+            else:
+                decoded = None
+            return out, decoded
         return out
 
 

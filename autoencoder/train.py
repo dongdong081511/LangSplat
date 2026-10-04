@@ -35,6 +35,8 @@ if __name__ == '__main__':
     parser.add_argument('--dataset_name', type=str, required=True)
     parser.add_argument('--data_subdir', type=str, default='language_features',
                         help='Subdirectory containing _f.npy feature files')
+    parser.add_argument('--input_dim', type=int, default=512,
+                        help='Input feature dimension (512 for CLIP B/16, 768 for L/14)')
     args = parser.parse_args()
     dataset_path = args.dataset_path
     num_epochs = args.num_epochs
@@ -60,7 +62,7 @@ if __name__ == '__main__':
     encoder_hidden_dims = args.encoder_dims
     decoder_hidden_dims = args.decoder_dims
 
-    model = Autoencoder(encoder_hidden_dims, decoder_hidden_dims).to("cuda:0")
+    model = Autoencoder(encoder_hidden_dims, decoder_hidden_dims, input_dim=args.input_dim).to("cuda:0")
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     logdir = f'ckpt/{args.dataset_name}'
