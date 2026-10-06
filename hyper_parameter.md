@@ -872,3 +872,26 @@
   - 工具: run_exp045b_grid.sh {0.15,0.2} + run_exp045c_grid.sh {0.5,0.7} (等待队列设计: pgrep 轮询前序脚本退出后接续, 不可修改运行中脚本); 第4次变量拼接 bug: `$TAG_vs_a07_` 中下划线是合法变量名字符被整体解析为空——多变量拼接必须用 `${TAG}` 花括号
   - 产物: json FIGURINES_DINO_ccw{015,02,05,07}.json; 渲染已自动删 (ckpt 保留可复原); 磁盘余 151G
 - **产物**: json `eval_result/mcnemar/FIGURINES_DINO_ccw03.json`; log `eval_result/adaptive/exp045_figurines.log`; figurines cw03 渲染+ckpt 未删 (待用户确认, 可复原); teatime cw10/cw30 已删 (213GB)
+
+---
+
+## 实验编号: EXP-046 — 判别性端到端场: tile 相似结构蒸馏 (lf_rel_weight)
+- **日期**: 2026-10-06 16:58 完成
+- **分支**: experiment/e2e-discrim (从 experiment/crossattn-mm 0d410c1 切出, 可整体丢弃回退)
+- **动机**: AE 重建损失与下游判别反复脱钩 ("重建好≠下游好" 出现 3 次)。把 tile 相似结构直接蒸馏进 render 特征, 砍掉"先重建后使用"的两段式
+- **方法**: GS 训练损失 = L1 回归锚 + w_rel × MSE(S3, S2)
+  - S2 = 同帧全部 tile 的 2D GT 特征 cos 相似矩阵 (off-diag cos mean=0.45/std=0.20, 结构信号丰富)
+  - S3 = render tile 均值的 cos 相似矩阵; L1 锚防止结构匹配流形漂移
+  - 实现: train.py gtt_cache (2D GT tile 均值缓存) + 共享 tile means 重构 (lf_cons/lf_rel 复用); 修复 _s.npy 与 -r 分辨率不匹配隐患 (nearest 插值, lf_cons 一并受益)
+- **场景**: teatime (image-query first/any 口径, n=61; raw 90.16/93.44, a07 91.80/93.44)
+- **结果 (first=any 同数)**:
+  - w_rel=1: 88.52 (54/61), vs raw −1 对 ns, vs a07 −2 对 p=0.69
+  - w_rel=5: 75.41 (46/61), vs raw −14.8pp **p=0.0225★** / any p=0.0034★
+  - w_rel=20: 45.90 (28/61), vs raw −44.3pp **p<0.0001★** (discordant b=29 c=2)
+- **结论**:
+  1. **严格单调下降, 无峰, 方向关闭** — 相似结构蒸馏随权重单调伤害, 强权重腰斩判别力 (45.90%)
+  2. **机理**: 强 S2 约束把 render 特征拉向"复现 2D 相对相似度"流形, 牺牲 tile 绝对判别信息; w=1 温和档也已低于 raw (−1 对)
+  3. **第三块机理证据 (论文分析节)**: 训练时对 render 特征施加的约束 — 一致性 (lf_cons: teatime 有峰 w=0.3 但场景依赖/figurines 单调伤害)、结构蒸馏 (lf_rel: 全程单调伤害) — 均不产生可靠增益; **唯一有效机制 = 离线混回 2D 信息 (α 平滑)**, 主表配置维持全局 α=0.7
+  4. 与 EXP-025 (tile-mean 抹除选择性) 呼应: 聚合/结构类约束与 tile 级判别天然冲突
+- **工程坑**: ① -m 自动追加 _<level> 后缀 (memory 硬约束), 手动加 _$L 导致目录 teatime_dino_32dr1_1_1, 已改名复用零浪费; ② render.py 无 --skip_mesh/--skip_interpolate 参数, 正确参数为 --include_feature
+- **产物**: json TEATIME_DINO_cr{1,5,20}.json; log eval_result/adaptive/exp046_teatime_rel3.log; 渲染已删 (ckpt 保留); 分支处置建议: lf_rel 代码已随本分支存在, 效果否定, 分支不合并 (留档) 或丢弃均可, 主线 crossattn-mm 不受影响
