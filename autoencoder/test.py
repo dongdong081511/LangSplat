@@ -22,16 +22,22 @@ if __name__ == '__main__':
                     type=int,
                     default=[16, 32, 64, 128, 256, 256, 512],
                     )
+    parser.add_argument('--data_subdir', type=str, default='language_features',
+                        help='Source feature subdirectory to encode')
+    parser.add_argument('--output_subdir', type=str, default='language_features_dim3',
+                        help='Output subdirectory for encoded codes')
+    parser.add_argument('--input_dim', type=int, default=512,
+                        help='Input feature dimension (512 CLIP, 1024 DINOv2)')
     args = parser.parse_args()
-    
+
     dataset_name = args.dataset_name
     encoder_hidden_dims = args.encoder_dims
     decoder_hidden_dims = args.decoder_dims
     dataset_path = args.dataset_path
     ckpt_path = f"ckpt/{dataset_name}/best_ckpt.pth"
 
-    data_dir = f"{dataset_path}/language_features"
-    output_dir = f"{dataset_path}/language_features_dim3"
+    data_dir = f"{dataset_path}/{args.data_subdir}"
+    output_dir = f"{dataset_path}/{args.output_subdir}"
     os.makedirs(output_dir, exist_ok=True)
     
     # copy the segmentation map
@@ -54,7 +60,7 @@ if __name__ == '__main__':
     )
 
 
-    model = Autoencoder(encoder_hidden_dims, decoder_hidden_dims).to("cuda:0")
+    model = Autoencoder(encoder_hidden_dims, decoder_hidden_dims, input_dim=args.input_dim).to("cuda:0")
 
     model.load_state_dict(checkpoint)
     model.eval()

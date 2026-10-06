@@ -37,6 +37,8 @@ if __name__ == '__main__':
                         help='Subdirectory containing _f.npy feature files')
     parser.add_argument('--input_dim', type=int, default=512,
                         help='Input feature dimension (512 for CLIP B/16, 768 for L/14)')
+    parser.add_argument('--struct_weight', type=float, default=0.0,
+                        help='EXP-050: weight of pairwise cosine-structure preservation loss')
     args = parser.parse_args()
     dataset_path = args.dataset_path
     num_epochs = args.num_epochs
@@ -77,9 +79,17 @@ if __name__ == '__main__':
             outputs_dim3 = model.encode(data)
             outputs = model.decode(outputs_dim3)
             
-            l2loss = l2_loss(outputs, data) 
+            l2loss = l2_loss(outputs, data)
             cosloss = cos_loss(outputs, data)
             loss = l2loss + cosloss * 0.001
+            if args.struct_weight > 0:
+                # EXP-050: preserve pairwise cosine structure of raw features in the code space
+                B = data.shape[0]
+                Sz = F.normalize(outputs_dim3, dim=1) @ F.normalize(outputs_dim3, dim=1).t()
+                Sf = F.normalize(data, dim=1) @ F.normalize(data, dim=1).t()
+                mask = torch.triu(torch.ones(B, B, device=data.device, dtype=torch.bool), diagonal=1)
+                structloss = ((Sz - Sf)[mask] ** 2).mean()
+                loss = loss + args.struct_weight * structloss
             
             optimizer.zero_grad()
             loss.backward()

@@ -114,3 +114,22 @@ Reference numbers (chosen-level top1, first/any %) — full matrix in `paper_mat
 - [ ] Leaderboard JSON schema + auto-report script (`eval/eval_image_query.py --out_json` ->
       `eval/mcnemar.py` -> markdown table).
 - [ ] Human-verified GT audit for duplicate-label frames.
+
+## 8. 重复标签分层协议（EXP-051）
+
+检索歧义有两个正交维度，必须分开报告：
+
+| 场景 | GT帧 | 实例 | 跨帧重复率 | 同帧聚集 max | mean extra/帧 | 等级 |
+|---|---|---|---|---|---|---|
+| teatime | 6 | 62 | 98% | 3 (hooves) | 0.50 | low-ambiguity |
+| figurines | 4 | 57 | 95% | 2 | 0.25 | low-ambiguity |
+| ramen | 7 | 80 | 99% | 2 | 1.29 | high-spread（跨帧广布） |
+| waldo | 5 | 29 | 52% | **5 (knife)** | 1.40 | high-clustered（同帧聚集） |
+
+三条实证结论（EXP-048 per-label 拆解，`eval_result/adaptive/exp048_*.json`）：
+
+1. **跨帧重复不惩罚 3D 检索场**——ramen 跨帧重复 99%（sake cup ×8、chopsticks ×7）却是 DINO 场 majority 增益最大场景（+25.3pp）；重复标签跨帧分布是任务正常难度，凸显 per-frame 检索稳定性价值。
+2. **同帧聚集被 majority 口径部分抵消**——waldo knife 每帧 5 实例同框，chosen/first 口径下重创 DINO 场（EXP-039 −23pp），但 majority 口径下 knife 双方 8/9 平手：多帧独立投票稀释了单帧歧义。
+3. **小样本场景必须报 per-label 表**——waldo majority 残余差距全在 plate（n=2，0/2 vs 2/2）噪声级标签；teatime apple（−20%）、figurines green toy chair（0/2）同理。n<20 的场景级结论必须附 per-label 拆解。
+
+发布包中的落地：`eval_image_query.py --out_json` 的 per-pair JSON 含 label 字段；分层分析脚本读 JSON 按 label 聚合即可复现第 3 节全部表格。

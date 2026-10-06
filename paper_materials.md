@@ -176,3 +176,10 @@ $$F'_{tile} = \alpha \cdot F_{render}(tile) + (1-\alpha) \cdot F_{2D}(tile)$$
 - [ ] **相关对比方法（LangSplat 原版数字引用提示）**：主表 A/B 需并排引用 LangSplat 原论文在 LERF 三场景（teatime/figurines/ramen…按原论文场景名）的 mIoU/mLoc 数字——**引原论文报告值，勿用本地复现**；本地 `ckpt/pretrained_model/` 为 sofa 预训练权重，口径不同。引用时注意原论文 prompt ensemble 设置与本工作 EXP-024 协议（7 模板）的对应关系。
 - [ ] text eval 的 ensemble 双口径叙述：主表 A 报双列，正文强调"两升两降、场景相关"（EXP-039 结论）。
 - [ ] waldo 处理口径决策：主表 B 保留负值并引归因段（6.2），还是移至附录 + 正文脚注——写作时定。
+
+### B-3 重复标签分层协议（EXP-051，方法论文期刊化素材）
+
+**两个正交歧义维度**：跨帧重复率（teatime 98%/figurines 95%/ramen 99%/waldo 52%）≠ 同帧聚集度（max same-frame same-label：3/2/2/**5**）。与 EXP-048 结果对齐后三个反直觉结论：
+1. ramen 跨帧重复最高（99%）但 DINO majority 增益最大（+25.3pp）——跨帧重复是任务正常难度，不惩罚 3D 场；
+2. waldo knife 同帧聚集 5 实例/帧，majority 口径下双方 8/9 平手——多帧投票抵消单帧歧义（修正 EXP-039"knife×9 惩罚"叙事：该惩罚只在 chosen/first 口径成立）；
+3. waldo majority 残余差距全在 plate（n=2）——小样本场景（n<20）必须报 per-label 表，场景级均值会被 1-2 个标签噪声主导（teatime apple −20%、figurines green toy chair 0/2 同理）。
