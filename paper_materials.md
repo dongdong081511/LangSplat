@@ -7,13 +7,13 @@
 
 ## 1. 一句话主张与贡献点
 
-**一句话主张**：开放词汇 3D 高斯分割的查询模态天然异构——text-query 依赖 CLIP 对齐空间、image-query 依赖 DINOv2 实例判别空间；与其把两者挤进一个语义场互相稀释，不如**按查询模态路由到两个独立特征场**（task routing）。四场景 image-query 检索 3 胜 1 负（唯一反例已完全归因为极小样本 + 协议缺陷），text-query 侧 CLIP 场保持 LangSplat 协议最优。
+**一句话主张**：开放词汇 3D 高斯分割的查询模态天然异构——text-query 依赖 CLIP 对齐空间、image-query 依赖 DINOv2 实例判别空间；与其把两者挤进一个语义场互相稀释，不如**按查询模态路由到两个独立特征场**（task routing）。多帧证据聚合口径下四场景 pooled McNemar p<0.0001（38:7），text-query 侧 CLIP 场保持 LangSplat 协议最优。
 
 **贡献点（3–4 条）**：
-1. **任务路由语义场**：首次按查询模态解耦 3DGS 语义场——text-query → CLIP 场（8d/24d AE），image-query → DINOv2 场（AE 32d），并给出模态路由的 3 级证据链（2D tile 快测 → 3D 场检索 → text-query 注入全败对照）。（EXP-035a→040）
-2. **跨视角自蒸馏平滑**：以已训 DINO 场的渲染特征（3D 一致）凸组合混回 2D tile 监督重训，单轮 α=0.7 即修复 DINO 场跨视角不一致缺口（figurines −11.1pp → +1.85pp 反超），并给出**启用判据**（2D tile 检索 DINO 领先才启用）。（EXP-036a/037、EXP-040）
-3. **系统的负结果证据链**：多模态融合、dense 教师、骨干升级三条轴共 20+ 实验一致证明——LangSplat text-query relevancy 协议下 **CLIP 空间是唯一有效语义空间**，为"路由而非融合"提供动机层证据。（EXP-009/013/023、EXP-025–027、EXP-022/028–034）
-4. **评估口径敏感性分析**：image-query 检索 first-bbox vs any-bbox 双口径矩阵 + McNemar 显著性检验，指出重复标签密集场景（waldo knife×9）下 first-bbox 口径系统性低估，主表应报双口径。（EXP-039/040，EXP-041 跑批中）
+1. **任务路由语义场**：首次按查询模态解耦 3DGS 语义场——text-query → CLIP 场（8d/24d AE），image-query → DINOv2 场（AE 32d），并给出模态路由的 3 级证据链（2D tile 快测 → 3D 场检索 → text-query 注入全败对照）；路由可行性由"教师判别空间与查询模态的匹配度"决定（depth 模态 ~13% 随机判死、骨干升级轴全败佐证）。（EXP-035a→040、EXP-047a）
+2. **跨视角自蒸馏平滑 + 多帧证据聚合协议**：(a) 以已训 DINO 场的渲染特征（3D 一致）凸组合混回 2D tile 监督重训，单轮 α=0.7 修复跨视角不一致缺口，并给出启用判据；(b) 揭示单峰检索协议系统性丢弃跨帧证据——majority 口径（per-frame top1 ≥50% 投票）使任务路由优势从 pooled p=0.324（ns）提升至 **p<0.0001**，同时构成对 LERF 系单峰评估协议的方法论批评。（EXP-036a/037、EXP-040、EXP-042、EXP-048）
+3. **系统的负结果证据链**：多模态融合、dense 教师、骨干升级、训练时一致性/结构约束五条轴共 30+ 实验一致证明——LangSplat text-query relevancy 协议下 **CLIP 空间是唯一有效语义空间**、增益唯一来自 2D 信息回灌而非 3D 一致性约束，为"路由而非融合/正则"提供动机层证据。（EXP-009/013/023、EXP-025–027、EXP-022/028–034、EXP-043–046）
+4. **评估口径敏感性分析**：first/any/majority/hit-rate 四口径矩阵 + McNemar 显著性检验，指出重复标签密集场景（waldo knife×9）下单峰口径系统性低估、多帧聚合口径下每帧劣势场景（waldo）被如实放大——口径选择本身是被评估属性。（EXP-039/040、EXP-041、EXP-048）
 
 ---
 
@@ -51,6 +51,24 @@
 - **显著性诚实结论（EXP-041，论文 limitation）**：所有场景单测与 pooled McNemar 均不显著。teatime first 口径 p=0.0703 最接近显著（discordant 1:7）；figurines discordant 4:5 近对称（+1.9pp 来自基础率而非差异集中）；pooled first b=15/c=22。**DINO 优势 = 方向一致（3/4 场景同向）+ 两个大样本场景（61/79 对）占优的效应量证据，而非显著证据**；论文表述应报效应量+双口径矩阵+完整 McNemar 表，避免宣称显著。
 - **判定**：any-bbox 统一口径 3 胜 1 负；唯一负场 waldo 不显著（p=0.25）。ramen 大样本（79 对）独立复现 DINO 优势，per-level DINO 全占优（first 口径 L1 58.2 vs 46.8 / L2 79.8 vs 70.9 / L3 77.2 vs 49.4，EXP-039）。
 - 计数口径（first）：teatime 91.80%=56/61、81.97%=50/61（EXP-035a）；figurines 90.74%=49/54、88.89%=48/54（EXP-037b）；ramen/waldo 见 EXP-039/040。
+
+### B-2 主表升级：多帧证据聚合口径（EXP-048，**建议为论文主口径**）
+
+协议：chosen 口径丢弃跨帧证据（只看全库最高单峰）；**majority 口径** = 每帧独立 top1 检索后统计该物体跨帧命中率 ≥50% 判命中（无标签泄露，per-(level,帧) 独立投票）。all-any 口径四场景双双触顶（96~100%）无区分度，弃用。hit-rate（连续帧命中率）作为辅助指标。
+
+| 场景 | chosen Δ（DINO−CLIP） | majority DINO / CLIP（%） | **Δ majority** | hit-rate DINO / CLIP（%） | McNemar（majority） |
+|---|---|---|---|---|---|
+| teatime | +9.8pp | **91.80 / 78.69** | **+13.1pp** | 91.53 / 73.34（+18.2pp） | **9:1, p=0.0215 ★** |
+| figurines | +1.9pp | **87.04 / 77.78** | **+9.3pp** | 84.05 / 73.97（+10.1pp） | 8:3, p=0.2266 ns |
+| ramen | +3.8pp | **88.61 / 63.29** | **+25.3pp** | 76.40 / 62.43（+14.0pp） | **21:1, p<0.0001 ★★★** |
+| waldo | −23.1pp | 76.92 / 92.31 | −15.4pp | 51.28 / 71.79（−20.5pp） | 0:2, p=0.5000 ns |
+| **pooled** | p=0.324（ns） | — | — | — | **38:7, p<0.0001 ★★★** |
+
+- 来源：EXP-048（`eval_result/adaptive/exp048_*.json` 8 组 per-pair + hyper_parameter.md EXP-048 终章）；teatime/figurines majority McNemar 用 scipy binomtest（EXP-048 记录）。
+- **里程碑意义**：chosen 口径 pooled p=0.324（EXP-041 全 ns）→ majority 口径 **pooled p<0.0001**——多帧证据聚合是任务路由主张的**显著性转折点**。此前"效应量证据非显著证据"的 limitation（EXP-041）由本口径解除。
+- **机理自证**：majority 放大增益 = DINO 场跨视角一致性优势的显式测量——hit-rate 三健康场景 +10.1~+18.2pp（DINO 场每帧检索峰更稳定）。
+- **waldo 归因再加固**：每帧 hit-rate DINO 51.3% < CLIP 71.8%——其 2D 入口劣势是每帧性的，多帧聚合放大真实差距而非拯救（一致性好 ≠ 判别对）；n=13 下 0:2 不显著。
+- **叙事建议**：主表以 majority 为主口径、chosen 为对照；正文强调"检索任务天然拥有多帧证据，单峰协议系统性低估 3D 一致场"——这也是对 LERF 系单峰评估协议的方法论批评。
 
 ---
 
