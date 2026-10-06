@@ -928,3 +928,18 @@
   - **Δmajority = +9.26pp (chosen 口径仅 +1.85pp)**, Δhit-rate = +10.1pp — 多帧聚合放大 DINO 优势 5 倍; all-any 双双触顶无区分度 (弃用)
 - **事故记录**: output/ 白名单清理漏 teatime/ramen/waldo_dino_32ds_a07_* (ckpt+渲染丢失), smooth 特征与 base ckpt 完好; run_exp048_restore.sh 重训恢复 (~5.5h); figurines a07 幸存; 教训: 白名单清理必须 ls 全量核对后逐场景 grep 验证
 - **待**: 三场景恢复后跑四场景 × 两侧 8 组 eval + McNemar (waldo 多帧证据是否翻正为关键判据)
+
+- **EXP-048 终章 — 四场景 majority 矩阵 + McNemar (n=61/54/79/13)**:
+  | 场景 | chosen Δ | majority (DINO/CLIP) | Δ | hit-rate Δ | McNemar (majority) |
+  |---|---|---|---|---|---|
+  | teatime | +9.8pp | 91.80 / 78.69 | +13.1pp | +18.2pp | **9:1 p=0.0215 ★** |
+  | figurines | +1.9pp | 87.04 / 77.78 | +9.3pp | +10.1pp | 8:3 p=0.2266 ns |
+  | ramen | +3.8pp | 88.61 / 63.29 | **+25.3pp** | +14.0pp | **21:1 p<0.0001 ★★★** |
+  | waldo | −23.1pp | 76.92 / 92.31 | −15.4pp | −20.5pp | 0:2 p=0.5 ns |
+  | **pooled** | p=0.324 ns | — | — | — | **38:7 p<0.0001 ★★★** |
+- **三重结论**:
+  1. **pooled 显著性突破**: chosen 口径 pooled p=0.324 (EXP-041 全 ns) → majority 口径 **p<0.0001**——多帧证据聚合是任务路由主张的显著性转折点; 主表应报 chosen+majority 双口径 (majority 为主)
+  2. **机理自证**: majority 放大增益 = DINO 场跨视角一致性优势的显式测量 (hit-rate DINO 91.5/84.1/76.4 vs CLIP 73.3/74.0/62.4, 三场景 +10~18pp)
+  3. **waldo 归因闭环**: 每帧 hit-rate DINO 51.3% < CLIP 71.8%——2D 入口劣势是每帧性的, 多帧聚合放大真实差距 (一致性好≠判别对); all-any 四场景触顶无区分度弃用
+- **事故修复**: 三场景 a07 DINO 场重训复原后 chosen 口径逐分与历史一致 (91.80/78.48/46.15), 复原无偏移
+- **产物**: eval_result/adaptive/exp048_*.json (8 组 per-pair); 渲染四场景 a07 全恢复
