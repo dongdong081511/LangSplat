@@ -43,13 +43,27 @@ def pick_query_tile(seg, obj_mask):
     return counts[0][0]
 
 
-def tile_means(R, s, T):
-    flat = s.ravel()
-    cnt = np.bincount(flat, minlength=T).astype(np.float32)
-    TM = np.empty((T, R.shape[2]), np.float32)
-    for d in range(R.shape[2]):
-        TM[:, d] = np.bincount(flat, weights=R[:, :, d].ravel(), minlength=T) / np.maximum(cnt, 1)
-    return TM
+def aggregate_renders(src_dir, dst_dir, k):
+    """EXP-049: pixel-wise neighbor-frame averaging of rendered feature maps.
+    Adjacent video frames are near-aligned; cross-frame tile tids are NOT aligned
+    (SAM per-frame), so tile-level aggregation is invalid — pixels only."""
+    os.makedirs(dst_dir, exist_ok=True)
+    files = sorted(glob.glob(os.path.join(src_dir, '*.npy')))
+    assert len(files) > 100, f'too few renders in {src_dir}'
+    for i, fp in enumerate(files):
+        out = os.path.join(dst_dir, os.path.basename(fp))
+        if os.path.exists(out):
+            continue
+        acc = np.load(fp).astype(np.float32)
+        cnt = 1
+        for j in range(1, k + 1):
+            for dj in (-j, j):
+                ii = i + dj
+                if 0 <= ii < len(files):
+                    acc += np.load(files[ii]).astype(np.float32)
+                    cnt += 1
+        np.save(out, (acc / cnt).astype(np.float32))
+    print(f'aggregated k={k}: {len(files)} frames -> {dst_dir}')
 
 
 def main():
@@ -64,10 +78,6 @@ def main():
                     help='seg layer index for each render level')
     ap.add_argument('--tag', default='')
     ap.add_argument('--out_json', default='', help='save per-pair results (for McNemar paired test)')
-    ap.add_argument('--ens_k', type=int, default=0,
-                    help='EXP-049: aggregate renders with +-k neighbor frames (tile-mean translation)')
-    ap.add_argument('--ens_lambda', type=float, default=0.5,
-                    help='EXP-049: strength of neighbor tile-mean correction')
     args = ap.parse_args()
 
     gt = load_gt(args.gt_dir)
@@ -86,7 +96,6 @@ def main():
     stats = {li: [0, 0, 0, 0] for li in range(3)}  # n, hit_first, hit_any, (unused)
     chosen = [0, 0, 0]  # n, hit_first, hit_any
     multi = [0, 0, 0.0]  # EXP-048: n_mf_all_any, n_mf_majority, sum_mf_rate
-    rens_cache = {}  # EXP-049: (level, frame_idx) -> aggregated render [H,W,32] fp16
     records = []  # per-pair results for McNemar
 
     for frA in frames:
@@ -109,34 +118,7 @@ def main():
                         continue
                     rp = os.path.join(args.db_render_dirs[li], 'train', 'ours_None',
                                       'renders_npy', f'{int(frB.split("_")[-1]) - 1:05d}.npy')
-                    if args.ens_k > 0:
-                        idxB = int(frB.split('_')[-1]) - 1
-                        n_fr = len(frames)
-                        for kk in [kk for kk in rens_cache if kk[0] == li and abs(kk[1] - idxB) > args.ens_k]:
-                            del rens_cache[kk]
-                        if (li, idxB) not in rens_cache:
-                            rd = os.path.join(args.db_render_dirs[li], 'train', 'ours_None', 'renders_npy')
-                            raws = {}
-                            for dj in range(-args.ens_k, args.ens_k + 1):
-                                ii = idxB + dj
-                                if 0 <= ii < n_fr:
-                                    raws[ii] = np.load(os.path.join(rd, f'{ii:05d}.npy')).astype(np.float32)
-                            Rp = raws[idxB]
-                            s = segs[frB][args.seg_indexs[li]]
-                            T = feats[frB].shape[0]
-                            TM_own = tile_means(Rp, s, T)
-                            TM_nb = np.zeros_like(TM_own)
-                            n_nb = 0
-                            for ii, Rj in raws.items():
-                                if ii == idxB:
-                                    continue
-                                TM_nb += tile_means(Rj, s, T)
-                                n_nb += 1
-                            Re = Rp if n_nb == 0 else Rp + args.ens_lambda * ((TM_nb / n_nb) - TM_own)[s]
-                            rens_cache[(li, idxB)] = Re.astype(np.float16)
-                        R = rens_cache[(li, idxB)].astype(np.float32)
-                    else:
-                        R = np.load(rp).astype(np.float32)
+                    R = np.load(rp).astype(np.float32)
                     Rn = R / (np.linalg.norm(R, axis=-1, keepdims=True) + 1e-8)
                     sim = Rn.reshape(-1, R.shape[-1]) @ qv
                     simf = cv2.filter2D(sim.reshape(R.shape[:2]), -1, kernel)
