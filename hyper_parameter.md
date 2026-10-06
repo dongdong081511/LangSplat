@@ -914,3 +914,17 @@
 - **产物**: eval/depth_query_test.py; depth maps 缓存 teatime/ramen (depth_maps/); log eval_result/adaptive/exp047_depth_*.log
 
 - **EXP-047 收官 (用户决策)**: DINOv3 教师升级跳过 (骨干轴历史全败 EXP-022/028/030-034, 权重 gated 成本>预期收益); sketch 无 GT 协议不可测。**N 教师路由最终形态 = "判别空间匹配路由"框架**: text→CLIP / image→DINOv2 双场主表 + depth 判死 (EXP-047a) + 骨干轴负结果链——路由可行性由教师判别空间与查询模态的匹配度决定, 非场数量
+
+---
+
+## 实验编号: EXP-048 — 多帧证据聚合口径 (multi-frame consensus)
+- **日期**: 2026-10-06
+- **分支**: experiment/e2e-discrim
+- **动机**: chosen 口径只看单峰, 丢弃跨帧证据; DINO 场跨视角一致性更好→多帧聚合应放大其优势。投票无标签泄露 (per-(level,帧) 独立 top1 hit 聚合)
+- **实现**: eval/eval_image_query.py 新增三口径: all-any (任一帧命中) / majority (≥50% 帧命中) / hit-rate (连续帧命中率); records 加 mf_* 字段; chosen 口径逐分回归验证一致 (figurines 90.74/88.89)
+- **figurines 首批结果 (n=54)**:
+  - DINO a07: chosen 90.74 / **majority 87.04 (47/54)** / hit-rate 84.05% / all-any 96.30
+  - CLIP 24d: chosen 88.89 / **majority 77.78 (42/54)** / hit-rate 73.97% / all-any 96.30
+  - **Δmajority = +9.26pp (chosen 口径仅 +1.85pp)**, Δhit-rate = +10.1pp — 多帧聚合放大 DINO 优势 5 倍; all-any 双双触顶无区分度 (弃用)
+- **事故记录**: output/ 白名单清理漏 teatime/ramen/waldo_dino_32ds_a07_* (ckpt+渲染丢失), smooth 特征与 base ckpt 完好; run_exp048_restore.sh 重训恢复 (~5.5h); figurines a07 幸存; 教训: 白名单清理必须 ls 全量核对后逐场景 grep 验证
+- **待**: 三场景恢复后跑四场景 × 两侧 8 组 eval + McNemar (waldo 多帧证据是否翻正为关键判据)

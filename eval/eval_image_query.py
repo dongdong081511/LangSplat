@@ -72,12 +72,14 @@ def main():
     kernel = np.ones((30, 30)) / 900
     stats = {li: [0, 0, 0, 0] for li in range(3)}  # n, hit_first, hit_any, (unused)
     chosen = [0, 0, 0]  # n, hit_first, hit_any
+    multi = [0, 0, 0.0]  # EXP-048: n_mf_all_any, n_mf_majority, sum_mf_rate
     records = []  # per-pair results for McNemar
 
     for frA in frames:
         for i_obj, obj in enumerate(gt[frA]):
             best = None  # (sim, li, frB, pt, bboxes)
             level_best = {}  # li -> (sim, frB, pt, bboxes)
+            frame_hits = []  # EXP-048: per-(li,frB) top1 hit_any, for multi-frame aggregation
             for li in range(3):
                 si = args.seg_indexs[li]
                 q = pick_query_tile(segs[frA][si], obj['mask'])
@@ -100,6 +102,8 @@ def main():
                     pt = np.unravel_index(np.argmax(simf), simf.shape)
                     bboxes = [o['bbox'] for o in matches]
                     cand = (float(simf[pt]), li, frB, (pt[0], pt[1]), bboxes)
+                    y0, x0 = cand[3]
+                    frame_hits.append(any(b[0] <= x0 <= b[2] and b[1] <= y0 <= b[3] for b in bboxes))
                     if best is None or cand[0] > best[0]:
                         best = cand
                     lb = level_best.get(li)
@@ -114,9 +118,17 @@ def main():
             chosen[0] += 1
             chosen[1] += int(hit_first)
             chosen[2] += int(hit_any)
+            mf_all = int(any(frame_hits))          # EXP-048: any of per-frame top1 hits
+            mf_maj = int(np.mean(frame_hits) >= 0.5)  # EXP-048: majority of per-frame top1 hits
+            mf_rate = float(np.mean(frame_hits))      # EXP-048: per-frame hit rate
+            multi[0] += mf_all
+            multi[1] += mf_maj
+            multi[2] += mf_rate
             records.append({'frameA': frA, 'obj_i': i_obj, 'label': obj['label'],
                             'frameB': frB, 'level': li + 1, 'sim': best[0],
-                            'hit_first': int(hit_first), 'hit_any': int(hit_any)})
+                            'hit_first': int(hit_first), 'hit_any': int(hit_any),
+                            'mf_all_any': mf_all, 'mf_majority': mf_maj,
+                            'mf_rate': round(mf_rate, 4)})
             for l2, (sim2, frB2, pt2, bboxes2) in level_best.items():
                 y2, x2 = pt2
                 hf = bboxes2[0][0] <= x2 <= bboxes2[0][2] and bboxes2[0][1] <= y2 <= bboxes2[0][3]
@@ -130,6 +142,9 @@ def main():
           f'{chosen[1] / max(chosen[0], 1):.2%}')
     print(f'[{args.tag}] chosen-level top1 (any-bbox): {chosen[2]}/{chosen[0]} = '
           f'{chosen[2] / max(chosen[0], 1):.2%}')
+    n = max(chosen[0], 1)
+    print(f'[{args.tag}] EXP-048 multi-frame: all-any {multi[0]}/{n} = {multi[0] / n:.2%}  '
+          f'majority {multi[1]}/{n} = {multi[1] / n:.2%}  hit-rate {multi[2] / n:.2%}')
     for li in range(3):
         n, hf, ha, _ = stats[li]
         print(f'[{args.tag}] level{li + 1} pairs: {n} top1(first)={hf / max(n, 1):.2%} '
