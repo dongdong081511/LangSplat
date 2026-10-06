@@ -895,3 +895,20 @@
   4. 与 EXP-025 (tile-mean 抹除选择性) 呼应: 聚合/结构类约束与 tile 级判别天然冲突
 - **工程坑**: ① -m 自动追加 _<level> 后缀 (memory 硬约束), 手动加 _$L 导致目录 teatime_dino_32dr1_1_1, 已改名复用零浪费; ② render.py 无 --skip_mesh/--skip_interpolate 参数, 正确参数为 --include_feature
 - **产物**: json TEATIME_DINO_cr{1,5,20}.json; log eval_result/adaptive/exp046_teatime_rel3.log; 渲染已删 (ckpt 保留); 分支处置建议: lf_rel 代码已随本分支存在, 效果否定, 分支不合并 (留档) 或丢弃均可, 主线 crossattn-mm 不受影响
+
+---
+
+## 实验编号: EXP-047a — N 教师路由可行性: depth-query 2D 可分性快测
+- **日期**: 2026-10-06
+- **分支**: experiment/e2e-discrim
+- **动机**: 把"双场"推广为"N 教师路由"(text→CLIP / image→DINOv2 / depth→depth教师)。项目铁律: 免训练 2D gate 未过不进 3D
+- **协议**: eval/depth_query_test.py — query = DAv2 vitl 相对深度 bbox crop (32×32 归一化), db = 帧 B 全图滑窗 (stride 16) Pearson 相关, hit = 峰落同标签 bbox (first/any)
+- **结果**:
+  - teatime: first 8/61 = **13.11%** / any 13.11% (DINO image-query 同协议 91.80/93.44%)
+  - ramen: first 10/79 = **12.66%** / any 15.19% (DINO 78.48/84.81%)
+- **结论**:
+  1. **depth-query ≈ 随机 (~13%), 深度模态判死 (2D 层面)** — 相对深度归一化后不同物体的 patch (平滑表面/透视梯度) 高度相似, Pearson 相关无实例判别性; 重复物体多的 ramen 也仅 15%
+  2. EXP-013 (融合侧 depth tile 统计无增益) + EXP-047a (查询侧 depth patch 无判别性) = **深度轴双向闭合**
+  3. N 教师路由的框架表述: 路由可行性取决于"教师是否提供与查询模态匹配的判别空间"——CLIP (text-image 对齐) / DINOv2 (实例判别) 有, depth (几何) 无; N 场不是场越多越好, 而是"判别空间匹配才路由"。此表述比"N 场"更强且与全部实验证据自洽
+- **待测**: DINOv3 教师升级 (timm vit_large_patch16_dinov3 架构可用, 权重 gated 需 HF token) — tile_retrieval_test.py 快测判 gate
+- **产物**: eval/depth_query_test.py; depth maps 缓存 teatime/ramen (depth_maps/); log eval_result/adaptive/exp047_depth_*.log
