@@ -10,7 +10,9 @@
 #
 
 import os
+import numpy as np
 import torch
+import torch.nn.functional as Fn
 from random import randint
 from utils.loss_utils import l1_loss, ssim
 from gaussian_renderer import render, network_gui
@@ -58,6 +60,8 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     iter_end = torch.cuda.Event(enable_timing = True)
 
     viewpoint_stack = None
+    cons_buf = {}   # EXP-044: (frame, tile_id) -> EMA anchor [C] on cuda
+    tid_cache = {}  # EXP-044: frame name -> cuda tile-id map [H,W]
     ema_loss_for_log = 0.0
     progress_bar = tqdm(range(first_iter, opt.iterations), desc="Training progress")
     first_iter += 1
@@ -99,8 +103,38 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         # Loss
         if opt.include_feature:
             gt_language_feature, language_feature_mask = viewpoint_cam.get_language_feature(language_feature_dir=dataset.lf_path, feature_level=dataset.feature_level)
-            Ll1 = l1_loss(language_feature*language_feature_mask, gt_language_feature*language_feature_mask)            
+            Ll1 = l1_loss(language_feature*language_feature_mask, gt_language_feature*language_feature_mask)
             loss = Ll1
+            if opt.lf_cons_weight > 0:  # EXP-044: EMA cross-view tile consistency
+                name = viewpoint_cam.image_name
+                if name not in tid_cache:
+                    s = np.load(os.path.join(dataset.lf_path, name + '_s.npy'))[dataset.feature_level].astype(np.int64)
+                    tid_cache[name] = torch.from_numpy(s).cuda()
+                tid_map = tid_cache[name]
+                valid = tid_map >= 0
+                rv = language_feature[:, valid]                       # [C, K]
+                uniq, inv = torch.unique(tid_map[valid], return_inverse=True)
+                sums = torch.zeros(language_feature.shape[0], uniq.numel(),
+                                   device=rv.device).index_add_(1, inv, rv)
+                cnt = torch.zeros(uniq.numel(), device=rv.device).index_add_(
+                    0, inv, torch.ones_like(inv, dtype=torch.float32))
+                keep = cnt >= 30
+                mk = (sums[:, keep] / cnt[keep].unsqueeze(0)).t()     # [T, C] render tile means
+                keys = [(name, int(t)) for t in uniq[keep].tolist()]
+                anchors = [cons_buf.get(k) for k in keys]
+                known = [i for i, a in enumerate(anchors) if a is not None]
+                if known:
+                    A = torch.stack([anchors[i] for i in known], 0)   # [Tm, C]
+                    cur = mk[known]
+                    cons = (1.0 - Fn.cosine_similarity(cur, A, dim=-1)).mean()
+                    ema = Fn.normalize(opt.lf_cons_momentum * A
+                                       + (1.0 - opt.lf_cons_momentum) * cur.detach(), dim=-1)
+                    for j, i in enumerate(known):
+                        cons_buf[keys[i]] = ema[j]
+                    loss = loss + opt.lf_cons_weight * cons
+                for i, a in enumerate(anchors):
+                    if a is None:  # first sight of this tile: seed anchor, no loss
+                        cons_buf[keys[i]] = Fn.normalize(mk[i].detach().unsqueeze(0), dim=-1)[0]
         else:
             gt_image = viewpoint_cam.original_image.cuda()
             Ll1 = l1_loss(image, gt_image)

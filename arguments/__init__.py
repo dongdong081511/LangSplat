@@ -82,6 +82,8 @@ class OptimizationParams(ParamGroup):
         self.opacity_lr = 0.05
         self.language_feature_lr = 0.0025 # TODO: update
         self.include_feature = False # 默认 False（RGB 训练），LangSplat 训练时命令行传 --include_feature 启用
+        self.lf_cons_weight = 0.0    # EXP-044: EMA 跨视角 tile 一致性正则权重 (0=off)
+        self.lf_cons_momentum = 0.9  # EXP-044: tile 锚点 EMA 动量
         self.scaling_lr = 0.005
         self.rotation_lr = 0.001
         self.percent_dense = 0.01

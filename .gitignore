@@ -19,3 +19,6 @@ output_backup/
 
 # 日志
 *.log
+third_party/
+.trae/
+submodules/simple-knn/

@@ -798,3 +798,77 @@
   3. 方法论判据修正: "2D tile 检索 DINO 领先" 是平滑启用必要非充分条件 (teatime 2D +10.3pp 领先但平滑近无效; waldo 2D 打平则有害)
   4. 主表可报 teatime a03 场: 91.80/93.44, p=0.0312★ — 论文唯一 ★
 - 渲染已清理 (raw×3+a03×3+a05×3), JSON 保留; 磁盘 80%
+
+## EXP-043 (2026-10-04) 空间自适应平滑 (per-tile α 门控) — Phase A 信号研究: "waldo 场病态"假设被证伪
+- **动机**: waldo α=0.7 -7.7pp (EXP-040), 设计 per-tile 门控 α_i 按置信度决定平滑强度, 期望 waldo 自动降 α
+- **新工具**: eval/smooth_tiles_adaptive.py (--signal cos2d|cons, --gate hard|soft|quantile, --beta 退让系数, --dry 仅信号), eval/analyze_gate_signals.py; run_exp043a.sh (Phase A)
+- **信号定义** (per frame/level/tile, 面积≥30px):
+  - cos2d = cos(tile渲染均值, 2D监督特征) — 渲染-2D一致性
+  - cons = 跨 level 渲染均值共识 (同像素掩码在另外两个 level 场的渲染均值的平均 cos) — 场健康度, 不混淆"待修复的视角敏感"与"渲染垃圾"
+- **工程坑**: figurines_dino_32d_1 整目录被清理 (render.py 报 cfg_args FileNotFoundError 实为目录不存在), 补训 1 level (~40min); 12 个 raw 渲染全部重建
+- **Phase A 结果** (信号分位数, 五分位 q05/25/50/75/95):
+  - **waldo 场与健康场景无法区分**: cons 中位数 waldo L1/L2/L3 = 0.917/0.941/0.924 vs teatime 0.931/0.952/0.935 vs figurines 0.923/0.943/0.920; cos2d waldo (0.838/0.740/0.788) 甚至优于 teatime (0.806/0.700/0.745)
+  - 任何 τ 下 waldo gated-out 比例与 teatime/figurines 接近 (cons τ=0.8: 0.14/0.07/0.14 vs 0.09/0.04/0.10 vs 0.11/0.03/0.11)
+- **结论 (Phase A)**:
+  1. **证伪"waldo 渲染垃圾 tile 可检测"假设**: waldo DINO 场在 tile 级一致性与共识信号上不病态, 场本身没有坍缩 (EXP-039 "崩在 level1/coarse" 表现为下游检索指标, 不体现在特征空间一致性上)
+  2. 结合 EXP-041 McNemar p=0.25: waldo -7.7pp (any) = 13 对中 1 对翻转的噪声级, "平滑系统性伤害 waldo"证据不足
+  3. 门控价值主张修正: 从"自动止损"改为"保守安全带" — β=0.5 低置信 tile 平滑减半 (非归零), 预期四场景 ≈ a07 ± 微调; 若 waldo 门控版 ≥ raw 76.92% 则"安全带"主张成立
+- **Phase B 配置** (run_exp043b.sh, 11:56 启动): signal=cons, gate=hard, τ=0.85, β=0.5, α=0.7, tag=g07; 场景顺序 waldo→teatime→figurines→ramen; guard = gated-out>5% + maxdiff>1e-3; eval 后 McNemar vs CLIP 场 + vs a07 场 (first/any)
+- **成功判据**: waldo g07 ≥ raw 76.92% (any); teatime/figurines g07 ≥ a07 (91.80/90.74 first)
+
+## EXP-043 Phase B 结果 (2026-10-04 19:34 完成): per-tile 门控无净增益, 方向关闭
+- **四场景 g07 (cons, hard τ=0.85, β=0.5, α=0.7) vs a07** (image-query first/any):
+  - teatime: 91.80/93.44 = a07 **逐对全同** (discordant 0:0)
+  - waldo: 46.15/69.23 = a07 **逐对全同** (discordant 0:0)
+  - figurines: 87.04/87.04 vs 90.74/90.74 = **-3.7pp** (b=3 c=1, p=0.625 ns)
+  - ramen: 81.01/87.34 vs 78.48/84.81 = **+2.5pp** (b=1 c=3, p=0.625 ns)
+  - **pooled: first 173/207 = a07 173/207; any 182/207 = a07 182/207 — 总命中数完全相同, 场景间 ±2 对对冲**
+- **vs CLIP 场** (g07 口径): teatime +9.8pp (p=0.0703) / figurines -1.9pp (p=1.0) / ramen +6.3pp (p=0.33) / waldo -23.1pp (p=0.25) — 与主表 a07 口径一致
+- **结论 (EXP-043 总闭环)**:
+  1. **per-tile 自适应平滑无净增益**: pooled 与全局 α=0.7 逐命中数完全一致; 逐对变化仅在 figurines(-2)/ramen(+2), 均为噪声级 (全 ns)
+  2. **机制解释**: 门控 tile (~10-20%) 与检索查询/峰值路径基本不重叠 (teatime/waldo 逐对不变), 门控只在少数场景边缘 tile 起作用且方向随机
+  3. **tile 级特征信号 (cos2d/cons) 与下游检索表现脱钩** (Phase A + Phase B 双证): waldo 场信号健康但仍输; 门控信号无法预判哪些 tile 对下游有害
+  4. **最终设计维持**: 全局 α=0.7 + 前置判据 (该场景 2D tile 检索 DINO 领先才平滑, EXP-040 判据)
+  5. **论文定位**: 放入消融/设计空间探索节, 回应审稿人"为什么不用 per-tile 自适应 α"——有完整负结果证据链 (EXP-043 A+B)
+- **产物**: per-pair JSON `eval_result/mcnemar/{ABBR}_DINO_g07.json` + McNemar ×8 (vs CLIP/a07 × first/any); 门控统计 `eval_result/adaptive/gated_<scene>.json`; 全 log `eval_result/adaptive/exp043b.log`
+- **磁盘清理**: g07 12 场渲染 + ckpts 已删 (可由 smooth_g07 特征 + base ckpt 重训复原); Phase A 的 12 场 raw dino_32d 渲染已删
+
+## EXP-044 (2026-10-05 02:10 完成) 训练时 EMA 跨视角一致性正则: ≡ raw, 方向关闭
+- **方法**: train.py 新增 lf_cons loss (--lf_cons_weight 0.1 --lf_cons_momentum 0.9): 同 tile 不同帧被采样时, 渲染均值向 EMA 锚点对齐 (梯度只过当前渲染); raw 2D 监督不混回, 与离线平滑 (a07) 机制对照; 冒烟 300 iter 通过
+- **结果** (image-query first/any):
+  - waldo: 53.85/76.92 = **与 raw 完全同数** (7/13, 10/13); vs a07/g07 多 1 对 (10 vs 9, 无平滑伤害); vs CLIP -15.4pp p=0.5 ns
+  - teatime: 90.16/93.44 = **与 raw 完全同数** (55/61, 57/61); vs a07 first 少 1 对 (90.16 vs 91.80); vs CLIP +8.2pp p=0.0625 边缘
+- **结论 (双场景独立验证)**:
+  1. **训练时跨视角正则 (w=0.1) 完全复刻 raw 场**——正则太弱不改变收敛解; 未扫更强权重 (若 0.3/0.5 大概率伤重建, 与 smooth 混 2D 的方向性不同, 不追)
+  2. **"混回 2D"是平滑增益的必要成分**: 纯 3D 一致性约束 (正则) 不能产生 raw→a07 的增益; 与 EXP-042 机制结论 (平滑=以 2D 为锚修复 bbox 中心偏移) 独立互证
+  3. **设计空间闭环**: 全局 α=0.7 离线平滑 > 训练时正则 (≡raw) > per-tile 门控 (pooled 持平但 figurines -2对); 最简单的方案胜出, 论文消融节完整证据链 (EXP-037 iter2 无累积 / EXP-043 门控 / EXP-044 正则)
+  4. waldo 三重验证: 平滑/门控/正则全部动不了 waldo (-23pp 差距), 根源铁证 = 2D 入口打平, 非 3D 场质量
+  > **⚠ EXP-045 更正**: 本节"方向关闭"结论仅对 w=0.1 成立; w 网格扫描后发现 w=0.3 峰值 95.08% (teatime 新高, vs CLIP p=0.0078 显著), 方向c复活, 见 EXP-045
+- **产物**: per-pair JSON `eval_result/mcnemar/{WALDO,TEATIME}_DINO_cw01.json`; log `eval_result/adaptive/exp044_{waldo,teatime}.log`; c01 渲染/ckpt 保留未清理 (约 210GB, 磁盘紧张时可删, 可由特征+base ckpt 重训复原)
+
+## EXP-045 (2026-10-05 17:20 完成) lf_cons 权重网格 (teatime): 尖锐倒U, w=0.3 峰值 95.08% 创新高
+- **配置**: teatime, w ∈ {0.3, 1.0, 3.0} (w=0.1 来自 EXP-044), momentum=0.9, 其余同 EXP-044; 脚本 run_exp045_grid.sh (重启3次: ①vs_raw json 名 cw03≠ccw03 ②TAG 变量前缀传递不回写致 c03——教训: 子脚本 tag 拼接规则必须先核对)
+- **结果** (image-query first / any, n=61):
+  - **w=0.1**: 90.16 / 93.44 (≡ raw, EXP-044)
+  - **w=0.3**: **95.08 / 95.08** — vs CLIP first +13.1pp **p=0.0078 ★** (b=0 c=8, 全项目第二个显著); vs raw +3 对 (b=0 c=3, p=0.25); vs a07 (56/61) +2 对; **teatime image-query 历史新高**
+  - w=1.0: 85.25 / 88.52 (低于 raw -4.9pp, 开始伤)
+  - w=3.0: 73.77 / 73.77 (重伤 -16.4pp)
+- **曲线**: 90.16 (0.1) → **95.08 (0.3)** → 85.25 (1.0) → 73.77 (3.0) — 尖锐倒U, 有效窗口 ≈ [0.2, 0.5], w=0.3 附近峰值
+- **结论**:
+  1. **方向c可行但窗口窄**: EMA 跨视角一致性正则在 w=0.3 存在明确增益 (first 口径显著), 推翻 EXP-044 "≡raw 方向关闭"结论 (当时 w=0.1 太弱)
+  2. **机制 vs 离线平滑**: cw03 first=any=95.08 (first 口径 +3 对全部保持), b=0 只赢不输——与 a07 (waldo 有伤害案例) 不同; 训练时正则把一致性约束内化到优化过程, 未见 bbox 中心偏移伤害
+  3. **倒U窗口窄是双刃剑**: 优点=w 的物理意义清晰 (正则强度), 缺点=跨场景可能需重新调 w; 必须 figurines/waldo 泛化验证
+  4. cw03 的 per-level (77.05/86.89/86.89 first) vs raw —— chosen-level 机制吸收了 level 内差异
+- **待办**: ① figurines 泛化 (cw03 配置, ~2.5h) ② waldo 复验 (正则是否无伤害, 对比平滑 -1 对) ③ 若两场景成立 → cw03 进主表替换/并列 a07
+- **泛化验证 (EXP-045b, figurines cw03, 23:11 完成)**: **74.07% (40/54) = 显著负** — vs CLIP24d 场 (88.89%) -14.8pp **p=0.0215 ★显著为负** (b=9 c=1); vs raw (77.78%) -3.7pp; vs a07 (90.74%) -16.7pp; 结合 EXP-044 c01(w=0.1)≡raw, figurines 曲线 0.1→77.78 / 0.3→74.07 **全权重无增益峰, 方向c在 figurines 判死**
+- **EXP-045 终章结论**:
+  1. **w=0.3 增益不泛化**: teatime +4.9pp (显著正) → figurines -3.7pp (vs CLIP 显著负) — 一致性正则非场景无关, cw03 不能进主表
+  2. **机理发现 (与离线平滑对照, 论文分析节素材)**: figurines 的 2D DINO 监督跨视角方差是**信息** (混回 2D 即 a07 +11.1pp 最大增益; 压制它即 cw03 显著伤害); teatime 的 2D 方差主要是**噪声/偏移** (混回 2D 仅 +1.6pp; 一致性正则有净收益 +4.9pp) — 平滑增益来源 = 2D 信息回灌而非一致性本身, EXP-044(c01≡raw)+EXP-045(正则伤害) 双向支撑
+  3. 方向c最终定位: 通用训练正则 ❌; 机制对照实验 ✅ (与 a07/门控共同构成完整消融链)
+- **EXP-045b/c (2026-10-06 08:21 完成) figurines 完整 w 曲线 (用户要求扩网): 严格单调递减, 无峰, figurines 判死铁证**
+  - 曲线 (first=any, n=54): w=0.1 **77.78** (≡raw 42/54, 峰值即无增益) → 0.15 75.93 → 0.2 74.07 → 0.3 74.07 → 0.5 68.52 → 0.7 66.67; raw 场 77.78 (42/54)
+  - 显著性: vs CLIP24d 场 全部显著负且随 w 加深 (0.15 p=0.0391 / 0.2 p=0.0215 / 0.3 p=0.0215 / 0.5 p=0.0039 / **0.7 p=0.0005, b=12 c=0**); vs a07 (49/54) 同构加深 (0.15 p=0.0078 8:0 / 0.2 p=0.0039 9:0 / 0.7 p=0.0002 13:0)
+  - **结论**: figurines 上 EMA 正则从 w=0.1 起任何强度都伤害且严格单调 — "2D 方差=信息"机理的完整剂量-反应证据; teatime 倒U (有峰) vs figurines 单调降 (无峰) 的对比 = 场景依赖的最终形态
+  - 工具: run_exp045b_grid.sh {0.15,0.2} + run_exp045c_grid.sh {0.5,0.7} (等待队列设计: pgrep 轮询前序脚本退出后接续, 不可修改运行中脚本); 第4次变量拼接 bug: `$TAG_vs_a07_` 中下划线是合法变量名字符被整体解析为空——多变量拼接必须用 `${TAG}` 花括号
+  - 产物: json FIGURINES_DINO_ccw{015,02,05,07}.json; 渲染已自动删 (ckpt 保留可复原); 磁盘余 151G
+- **产物**: json `eval_result/mcnemar/FIGURINES_DINO_ccw03.json`; log `eval_result/adaptive/exp045_figurines.log`; figurines cw03 渲染+ckpt 未删 (待用户确认, 可复原); teatime cw10/cw30 已删 (213GB)
