@@ -912,3 +912,5 @@
   3. N 教师路由的框架表述: 路由可行性取决于"教师是否提供与查询模态匹配的判别空间"——CLIP (text-image 对齐) / DINOv2 (实例判别) 有, depth (几何) 无; N 场不是场越多越好, 而是"判别空间匹配才路由"。此表述比"N 场"更强且与全部实验证据自洽
 - **待测**: DINOv3 教师升级 (timm vit_large_patch16_dinov3 架构可用, 权重 gated 需 HF token) — tile_retrieval_test.py 快测判 gate
 - **产物**: eval/depth_query_test.py; depth maps 缓存 teatime/ramen (depth_maps/); log eval_result/adaptive/exp047_depth_*.log
+
+- **EXP-047 收官 (用户决策)**: DINOv3 教师升级跳过 (骨干轴历史全败 EXP-022/028/030-034, 权重 gated 成本>预期收益); sketch 无 GT 协议不可测。**N 教师路由最终形态 = "判别空间匹配路由"框架**: text→CLIP / image→DINOv2 双场主表 + depth 判死 (EXP-047a) + 骨干轴负结果链——路由可行性由教师判别空间与查询模态的匹配度决定, 非场数量
