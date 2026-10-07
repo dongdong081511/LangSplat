@@ -1,0 +1,26 @@
+smoothed 299 frames -> /home/xiedexia/project/LangSplat/dataset/lerf_ovs/figurines/language_features_dim32_dino_smooth_a095
+[3745094:3745094:20261007,163356.572863:WARNING crashpad_client_linux.cc:432] prctl: 无效的参数 (22)
+[3745095:3745095:20261007,163356.572899:WARNING crashpad_client_linux.cc:432] prctl: 无效的参数 (22)
+Training complete. [07/10 17:11:23]
+[3752115:3752115:20261007,171123.845245:WARNING crashpad_client_linux.cc:432] prctl: 无效的参数 (22)
+[3752116:3752116:20261007,171123.845298:WARNING crashpad_client_linux.cc:432] prctl: 无效的参数 (22)
+Rendering progress: 0it [00:00, ?it/s]Rendering progress: 0it [00:00, ?it/s]
+[3752538:3752538:20261007,171318.477496:WARNING crashpad_client_linux.cc:432] prctl: 无效的参数 (22)
+[3752537:3752537:20261007,171318.477495:WARNING crashpad_client_linux.cc:432] prctl: 无效的参数 (22)
+Training complete. [07/10 17:50:31]
+[3759624:3759624:20261007,175031.361607:WARNING crashpad_client_linux.cc:432] prctl: 无效的参数 (22)
+[3759625:3759625:20261007,175031.361717:WARNING crashpad_client_linux.cc:432] prctl: 无效的参数 (22)
+Rendering progress: 0it [00:00, ?it/s]Rendering progress: 0it [00:00, ?it/s]
+[3760061:3760061:20261007,175229.009205:WARNING crashpad_client_linux.cc:432] prctl: 无效的参数 (22)
+[3760062:3760062:20261007,175229.009272:WARNING crashpad_client_linux.cc:432] prctl: 无效的参数 (22)
+Training complete. [07/10 18:30:02]
+[3767243:3767243:20261007,183002.491387:WARNING crashpad_client_linux.cc:432] prctl: 无效的参数 (22)
+[3767244:3767244:20261007,183002.491495:WARNING crashpad_client_linux.cc:432] prctl: 无效的参数 (22)
+Rendering progress: 0it [00:00, ?it/s]Rendering progress: 0it [00:00, ?it/s]
+[3767681:3767681:20261007,183200.692603:WARNING crashpad_client_linux.cc:432] prctl: 无效的参数 (22)
+[3767682:3767682:20261007,183200.692681:WARNING crashpad_client_linux.cc:432] prctl: 无效的参数 (22)
+[figurines_A095] chosen-level top1: 52/54 = 96.30%
+[figurines_A095] chosen-level top1 (any-bbox): 52/54 = 96.30%
+[figurines_A095] EXP-048 multi-frame: all-any 54/54 = 100.00%  majority 49/54 = 90.74%  hit-rate 89.61%
+[3767805:3767805:20261007,183231.242902:WARNING crashpad_client_linux.cc:432] prctl: 无效的参数 (22)
+EXP052C_ALL_DONE
