@@ -78,6 +78,10 @@ def main():
                     help='seg layer index for each render level')
     ap.add_argument('--tag', default='')
     ap.add_argument('--out_json', default='', help='save per-pair results (for McNemar paired test)')
+    ap.add_argument('--query_from_render', action='store_true',
+                    help='EXP-053: query = mean of frame-A render features inside GT mask (same space as db), bypassing 2D tile AE codes')
+    ap.add_argument('--query_tile_mask', action='store_true',
+                    help='EXP-053b: with --query_from_render, use the SAM tile region (instead of full GT mask) for the render mean')
     args = ap.parse_args()
 
     gt = load_gt(args.gt_dir)
@@ -105,10 +109,27 @@ def main():
             frame_hits = []  # EXP-048: per-(li,frB) top1 hit_any, for multi-frame aggregation
             for li in range(3):
                 si = args.seg_indexs[li]
-                q = pick_query_tile(segs[frA][si], obj['mask'])
-                if q is None or q >= feats[frA].shape[0]:
-                    continue
-                qv = feats[frA][q]
+                if args.query_from_render:
+                    if obj['mask'].sum() < 30:
+                        continue
+                    rpA = os.path.join(args.db_render_dirs[li], 'train', 'ours_None',
+                                       'renders_npy', f'{int(frA.split("_")[-1]) - 1:05d}.npy')
+                    RA = np.load(rpA).astype(np.float32)
+                    if args.query_tile_mask:
+                        q = pick_query_tile(segs[frA][si], obj['mask'])
+                        if q is None or q >= feats[frA].shape[0]:
+                            continue
+                        qm = (segs[frA][si] == q)
+                        if qm.sum() < 30:
+                            continue
+                        qv = RA[qm].mean(axis=0)
+                    else:
+                        qv = RA[obj['mask'] > 0].mean(axis=0)
+                else:
+                    q = pick_query_tile(segs[frA][si], obj['mask'])
+                    if q is None or q >= feats[frA].shape[0]:
+                        continue
+                    qv = feats[frA][q]
                 qv = qv / (np.linalg.norm(qv) + 1e-8)
                 for frB in frames:
                     if frB == frA:

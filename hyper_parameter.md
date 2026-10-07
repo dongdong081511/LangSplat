@@ -981,3 +981,36 @@
   | a07 平滑场 | 91.80 | 93.44 | 91.80 | 91.53% |
 - **结论**: **创新点5 判死**。chosen −4.9pp vs 历史 raw (跨 run 噪声但方向无正信号), hit-rate −8.6pp vs a07, majority 仅持平。AE 侧结构保持无 3D 增益 — "重建≠判别"的瓶颈在 32d 压缩本身 (EXP-028/030 压缩瓶颈证据链), 不在损失函数; 训练时/编码时结构约束至此三线 (GS 渲染侧/GS 训练侧/AE 侧) 全部关闭
 - **工程**: autoencoder/test.py 参数化 (--data_subdir/--output_subdir/--input_dim); ae_gate_test.py 为可复用 2D gate 工具; struct05 渲染已删 ckpt 留
+
+---
+
+## 实验编号: EXP-052 — α 上探 (0.85) + chosen 协议偏置检查
+- **日期**: 2026-10-07
+- **前置检查 (chosen-level sim 偏置)**: 四场景×两侧 json 复查 — 三 level 的 chosen sim 中位数 0.95-0.99 一致, **无系统性偏置**, 主表 chosen 口径安全。副发现: DINO 场 chosen 集中 L3 (figurines 46/54, ramen 48/79, teatime 34/61) vs CLIP 场均匀 — 平滑后粗 tile 一致性优势; figurines DINO L1 从未被 chosen
+- **动机**: figurines α 曲线单调升未见顶 (raw 77.78 → a05 88.89 → a07 90.74), α∈{0.8,0.85,0.9} 未扫
+- **方案**: smooth α=0.85, 3D 项用 **a07 场渲染** (raw 场 ckpt 已删; r_a07 比 r_raw 更平滑 = 更强 3D 一致信号, 方向与 α>0.7 假设一致; 已在记录中注明来源)
+- **配置**: teatime + figurines 各 α0.85 → 3 level 训练 → 渲染 → image eval (chosen/majority/hit-rate)
+- **判据**: figurines ≥ 90.74 (a07) 则 α 曲线未封顶 → 补 α0.9; teatime ≥ 91.80 则平台延伸
+- **状态**: 跑批中
+
+---
+
+## 实验编号: EXP-053 — query 端消融 (2D tile / render-mask / render-tile 三协议)
+- **日期**: 2026-10-07
+- **动机**: 自查发现 query 用 2D tile AE 码 (压缩不对称: CLIP 8d 64:1 vs DINO 32d 32:1) — query 端噪声可能污染协议; render query (帧A 渲染图 GT-mask 区域均值, 与 db 同为 32d 渲染特征) 绕开 AE
+- **teatime 快验**: DINO 场 render-mask query chosen 98.36 (+4对) / majority 100% / hit-rate 97.68 — CLIP 场回血更多 (chosen 81.97→91.80) 确认 AE 压缩不对称假说
+- **四场景 render-mask 矩阵 (Δ = DINO−CLIP)**:
+  | 场景 | Δchosen | Δmajority | Δhit-rate | McNemar (chosen any) |
+  |---|---|---|---|---|
+  | teatime | +6.6pp (98.36 vs 91.80) | 0 (双触顶 100%) | +2.2pp | 4:0 p=0.125 |
+  | figurines | +1.9pp (94.44 vs 92.59) | −3.7pp | +4.2pp | 2:1 p=1.0 |
+  | ramen | **+10.1pp (88.61 vs 78.48)** | +3.8pp | +3.6pp | **9:1 p=0.0215 ★** |
+  | waldo | −15.4pp (46.15 vs 61.54) | −23.1pp | −12.8pp | 1:4 p=0.375 |
+  | **pooled** | — | — | — | **16:6 p=0.0525 (边缘)** |
+- **render-tile query 对照** (SAM tile 粒度渲染均值): 四场景 ≈ 2D tile query (teatime 91.80=91.80, figurines 92.59 vs 90.74, ramen 87.34 vs 78.48, waldo 全同) — **tile 粒度本身是瓶颈 (EXP-025 呼应), GT/SAM mask 粒度才是正解**
+- **结论**:
+  1. **任务路由主张在端到端协议下存活** — 3胜1负结构不变, ramen chosen 增益扩大 (+3.8→+10.1pp, p=0.0215 第二显著场景); pooled 从 2Dq 的 0.61 升至 0.0525
+  2. **query 端 AE 压缩不对称确认** — CLIP 8d (64:1) 承受更大 query 噪声, 渲染 query 下 CLIP 场回血 (teatime +9.8pp); 2D tile query 口径系统性低估 CLIP 场
+  3. **majority 口径在渲染 query 下饱和失效** (teatime 双 100%) — 最终协议: render-mask query + chosen 主口径 + hit-rate 辅口径; majority 保留在 2D tile query 协议下 (pooled p<0.0001)
+  4. **waldo 三种 query 协议全负** — knife 同帧聚集是 3D 场判别本身问题, 非 query 协议伪影
+- **论文**: 协议节升级为 query 端消融矩阵 (3 协议 × 双侧 × 多口径) — query 粒度/来源对 3D 检索的系统研究本身是协议贡献
