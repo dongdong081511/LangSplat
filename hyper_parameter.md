@@ -959,3 +959,25 @@
   | k=1 逐像素平均 | 88.52 (−2对) | 86.89 (−3对) | **80.89% (−10.6pp)** |
 - **结论**: **创新点4 关闭**。帧间手持运动 → 像素级平均造成特征混叠模糊, 峰变钝 (hit-rate −10.6pp); 结合 v1 的物理不可行, 推理端跨视角集成两档全部失败。**跨视角一致性只能在监督端注入 (离线平滑重训), 推理端 shortcut 不存在** — 反向强化 a07 重训流程的必要性, 论文中作为平滑方法的对照辩护
 - **工程**: aggregate_renders() 进 eval/eval_image_query.py (独立函数可复用); ens 渲染已删 (~49GB)
+
+---
+
+## 实验编号: EXP-050 — AE 判别性结构保持 (pairwise cosine structure loss)
+- **日期**: 2026-10-07
+- **动机**: "重建好≠下游好"3 连 (EXP-004/012/028) — AE 重建目标无判别约束; EXP-046 结构蒸馏败在 GS 渲染侧, AE 侧(未被审过的一段)是最后的试验场
+- **方案**: AE 训练加 batch 内两两 cos 结构保持损失 L_struct = MSE(Sz, Sf) (Sz/Sf = 码空间/原始空间两两 cos 矩阵, 上三角 pair); teatime DINO 768d→32d, --struct_weight 0.5, 100 epochs, best_loss 0.1684
+- **2D gate (eval/ae_gate_test.py, cross-frame tile 检索, 三方同协议)**:
+  | 空间 | frame-hit-rate | chosen |
+  |---|---|---|
+  | raw 768d | 13.72% | 11/61 |
+  | 原版 AE32d | 15.22% | 15/61 |
+  | struct05 AE32d | **15.85%** | 14/61 |
+  gate = 平过 (+0.63pp fhr / −1 对), 无伤害证据 (与 EXP-046 GS 侧灾难成对照: 结构约束在 AE 侧被容忍)
+- **3D 全链 (raw struct05 场, 无平滑)**:
+  | 配置 | chosen | any | majority | hit-rate |
+  |---|---|---|---|---|
+  | 历史 raw (EXP-042 锚点) | 90.16 | 93.44 | — | — |
+  | struct05 raw | 85.25 | 86.89 | 91.80 | 82.94% |
+  | a07 平滑场 | 91.80 | 93.44 | 91.80 | 91.53% |
+- **结论**: **创新点5 判死**。chosen −4.9pp vs 历史 raw (跨 run 噪声但方向无正信号), hit-rate −8.6pp vs a07, majority 仅持平。AE 侧结构保持无 3D 增益 — "重建≠判别"的瓶颈在 32d 压缩本身 (EXP-028/030 压缩瓶颈证据链), 不在损失函数; 训练时/编码时结构约束至此三线 (GS 渲染侧/GS 训练侧/AE 侧) 全部关闭
+- **工程**: autoencoder/test.py 参数化 (--data_subdir/--output_subdir/--input_dim); ae_gate_test.py 为可复用 2D gate 工具; struct05 渲染已删 ckpt 留
