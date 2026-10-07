@@ -1014,3 +1014,15 @@
   3. **majority 口径在渲染 query 下饱和失效** (teatime 双 100%) — 最终协议: render-mask query + chosen 主口径 + hit-rate 辅口径; majority 保留在 2D tile query 协议下 (pooled p<0.0001)
   4. **waldo 三种 query 协议全负** — knife 同帧聚集是 3D 场判别本身问题, 非 query 协议伪影
 - **论文**: 协议节升级为 query 端消融矩阵 (3 协议 × 双侧 × 多口径) — query 粒度/来源对 3D 检索的系统研究本身是协议贡献
+
+---
+
+## 实验编号: EXP-052 终章 — α=0.85 上探结果
+- **结果** (3D 项取自 a07 场渲染, 其余协议同 EXP-048):
+  - **figurines**: chosen 90.74 (49/54, =a07) / majority **92.59 (50/54, +5.6pp 新高)** / hit-rate 88.99% (+4.9pp)
+  - **teatime**: chosen 88.52 (54/61, -2对) / any 91.80 (-1对) / majority 91.80 (=a07) / hit-rate 91.12% (-0.4pp)
+- **结论**:
+  1. **figurines α 曲线未封顶确认** — majority 随 α 单调升 (a07 87.04 → a085 92.59), chosen 平台 (90.74); 触发预设判据 → 补 α=0.9 (EXP-052b)
+  2. **teatime 曲线闭合** — α∈[0.3,0.7] 平台, 0.85 微降; teatime 不再上探
+  3. 场景依赖再证: figurines 需更强 3D 一致性, teatime 已饱和 — α 最优值场景相关, 主表报 per-scene α
+- **注**: α=0.85 的 3D 项来自 a07 场 (raw ckpt 已删) — 监督信号 = 0.85×a07渲染 + 0.15×2D, 比 a07 更强的 3D 一致化; 若 α0.9 仍升则提示迭代平滑空间
