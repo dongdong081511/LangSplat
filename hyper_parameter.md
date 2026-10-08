@@ -1074,3 +1074,21 @@
   2. **主表 waldo 行 = raw 场**: chosen 口径最优（76.92 vs a07 69.23），majority 口径与 a07 完全同值 — 平滑对 waldo 的伤害是单帧现象，多帧投票天然免疫
   3. waldo 仍是唯一负场（vs CLIP −15.4pp 双口径 ns, n=13）— 边界条件叙事不变
 - **工程教训**: run_exp054.sh 的 mcnemar 调用从 eval/ cwd 用了根目录相对路径, FileNotFoundError + set -e 杀链, ramen 阶段未启动 → run_exp054b.sh 修复续跑; mcenemar.py 必须从项目根调用
+
+---
+
+## 实验编号: EXP-054 终章 — ramen α=0.9 探测 + per-scene 最优 α 统一主表（定稿）
+- **ramen a09**（131 帧平滑, n=79）: chosen 78.48/any 84.81（与 a07 chosen 同总数, discordant 4:4 对称）; majority **84.81 vs a07 88.61（−3.8pp, 5:2, p=0.91 ns）**; vs CLIP8d majority +21.5pp (b=2 c=19, p≈4.8e-6 ★)
+- **判定**: ramen 保留 **a07** — 与 teatime 同属"低 α 平台"型; α 最优值分两型: 低 α 平台（teatime 0.3-0.7 / ramen 0.7）vs 高 α 峰（figurines 0.85-0.9）vs 无增益（waldo 0=raw）
+- **统一主表终版（majority 口径, n=61/54/79/13）**:
+  | 场景 | DINO 场 | majority | CLIP 场 | Δ | McNemar (exact) |
+  |---|---|---|---|---|---|
+  | teatime | a07 | 91.80 | 78.69 | +13.1pp | **p=0.0215 ★** (b=1 c=9) |
+  | figurines | **a09** | 92.59 | 77.78 | **+14.8pp** | **p=0.0215 ★** (b=1 c=9) |
+  | ramen | a07 | 88.61 | 63.29 | +25.3pp | **p≈4.8e-6 ★★★** (b=1 c=21) |
+  | waldo | **raw** | 76.92 | 92.31 | −15.4pp | p=1.0 ns (b=2 c=0) |
+  | **POOLED** | | | | | **b=5 c=39, p≈1.4e-7** |
+- **chosen any 口径对照**: teatime 93.44/86.89 (+6.6) / figurines 92.59/88.89 (+3.7) / ramen 84.81/82.28 (+2.5) / waldo 76.92/92.31 (−15.4)
+- **vs EXP-048 版主表**: figurines a09 使 majority Δ +9.3→+14.8pp 且**首次单独显著**（0.227→0.0215）; waldo raw 使平滑伤害归因更干净（majority 与 a07 零 discordant）; pooled 38:7→39:5, p<0.000001
+- **显著性结论升级**: EXP-041 "全 ns"（pooled p=0.32）→ EXP-048 pooled ★（p<0.0001）→ **EXP-054 三场景单独 ★ + pooled p≈1.4e-7** — 唯一 ns 是 n=13 的 waldo（边界条件）
+- **注**: 本次汇总脚本曾对 binomtest.pvalue 重复 ×2（0.0430/0.9062 为双倍值）, 上表已按 mcnemar.py 精确口径（2×P(X≤min)）校正

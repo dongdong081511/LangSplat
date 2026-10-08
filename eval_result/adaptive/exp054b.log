@@ -1,0 +1,23 @@
+smoothed 131 frames -> /home/xiedexia/project/LangSplat/dataset/lerf_ovs/ramen/language_features_dim32_dino_smooth_a09
+=== ramen a09 train start 08:48:38
+Training complete. [08/10 09:19:23]
+output/ramen_dino_32ds_a09_1/chkpnt30000.pth
+Rendering progress: 0it [00:00, ?it/s]Rendering progress: 0it [00:00, ?it/s]
+output/ramen_dino_32ds_a09_1/train/ours_None/renders_npy/00000.npy
+Training complete. [08/10 09:51:18]
+output/ramen_dino_32ds_a09_2/chkpnt30000.pth
+Rendering progress: 0it [00:00, ?it/s]Rendering progress: 0it [00:00, ?it/s]
+output/ramen_dino_32ds_a09_2/train/ours_None/renders_npy/00000.npy
+Training complete. [08/10 10:22:44]
+output/ramen_dino_32ds_a09_3/chkpnt30000.pth
+Rendering progress: 0it [00:00, ?it/s]Rendering progress: 0it [00:00, ?it/s]
+output/ramen_dino_32ds_a09_3/train/ours_None/renders_npy/00000.npy
+[RAMEN_a09] chosen-level top1: 62/79 = 78.48%
+[RAMEN_a09] chosen-level top1 (any-bbox): 67/79 = 84.81%
+[RAMEN_a09] EXP-048 multi-frame: all-any 77/79 = 97.47%  majority 67/79 = 84.81%  hit-rate 74.75%
+[RAMEN_a09_vs_CLIP] protocol=any n_pairs=79 CLIP 65/79=82.28%  DINO 67/79=84.81%  delta=+2.53pp | discordant: b(clip-only)=8 c(dino-only)=10 | McNemar exact p=0.8145 ns
+[RAMEN_a09_vs_a07] protocol=any n_pairs=79 CLIP 67/79=84.81%  DINO 67/79=84.81%  delta=+0.00pp | discordant: b(clip-only)=4 c(dino-only)=4 | McNemar exact p=1.0000 ns
+[RAMEN_a09 majority vs CLIP8d] b=2 c=19 p=0.0004
+[RAMEN_a09 majority vs a07] b=5 c=2 p=0.9062
+=== ramen a09 done 10:25:21
+EXP054B_ALL_DONE
