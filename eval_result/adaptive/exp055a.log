@@ -1,0 +1,18 @@
+=== fig a09 retrain start 11:03:56
+Training complete. [08/10 11:42:37]
+output/figurines_dino_32ds_a09_1/chkpnt30000.pth
+Rendering progress: 0it [00:00, ?it/s]Rendering progress: 0it [00:00, ?it/s]
+output/figurines_dino_32ds_a09_1/train/ours_None/renders_npy/00000.npy
+Training complete. [08/10 12:22:04]
+output/figurines_dino_32ds_a09_2/chkpnt30000.pth
+Rendering progress: 0it [00:00, ?it/s]Rendering progress: 0it [00:00, ?it/s]
+output/figurines_dino_32ds_a09_2/train/ours_None/renders_npy/00000.npy
+Training complete. [08/10 13:01:19]
+output/figurines_dino_32ds_a09_3/chkpnt30000.pth
+Rendering progress: 0it [00:00, ?it/s]Rendering progress: 0it [00:00, ?it/s]
+output/figurines_dino_32ds_a09_3/train/ours_None/renders_npy/00000.npy
+[FIG_a09_RM] chosen-level top1: 50/54 = 92.59%
+[FIG_a09_RM] chosen-level top1 (any-bbox): 50/54 = 92.59%
+[FIG_a09_RM] EXP-048 multi-frame: all-any 54/54 = 100.00%  majority 48/54 = 88.89%  hit-rate 88.79%
+=== fig a09 done 13:03:55
+EXP055A_ALL_DONE

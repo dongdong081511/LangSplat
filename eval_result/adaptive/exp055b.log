@@ -1,0 +1,19 @@
+[TEA_DINO_RM] chosen-level top1: 56/61 = 91.80%
+[TEA_DINO_RM] chosen-level top1 (any-bbox): 56/61 = 91.80%
+[TEA_DINO_RM] EXP-048 multi-frame: all-any 59/61 = 96.72%  majority 56/61 = 91.80%  hit-rate 90.85%
+[TEA_CLIP_RM] chosen-level top1: 53/61 = 86.89%
+[TEA_CLIP_RM] chosen-level top1 (any-bbox): 53/61 = 86.89%
+[TEA_CLIP_RM] EXP-048 multi-frame: all-any 60/61 = 98.36%  majority 56/61 = 91.80%  hit-rate 90.41%
+[RAM_DINO_RM] chosen-level top1: 69/79 = 87.34%
+[RAM_DINO_RM] chosen-level top1 (any-bbox): 74/79 = 93.67%
+[RAM_DINO_RM] EXP-048 multi-frame: all-any 77/79 = 97.47%  majority 66/79 = 83.54%  hit-rate 74.47%
+[RAM_CLIP_RM] chosen-level top1: 62/79 = 78.48%
+[RAM_CLIP_RM] chosen-level top1 (any-bbox): 67/79 = 84.81%
+[RAM_CLIP_RM] EXP-048 multi-frame: all-any 78/79 = 98.73%  majority 62/79 = 78.48%  hit-rate 72.26%
+[WAL_DINO_RM] chosen-level top1: 6/13 = 46.15%
+[WAL_DINO_RM] chosen-level top1 (any-bbox): 9/13 = 69.23%
+[WAL_DINO_RM] EXP-048 multi-frame: all-any 12/13 = 92.31%  majority 10/13 = 76.92%  hit-rate 60.26%
+[WAL_CLIP_RM] chosen-level top1: 7/13 = 53.85%
+[WAL_CLIP_RM] chosen-level top1 (any-bbox): 11/13 = 84.62%
+[WAL_CLIP_RM] EXP-048 multi-frame: all-any 13/13 = 100.00%  majority 11/13 = 84.62%  hit-rate 61.54%
+EXP055B_ALL_DONE

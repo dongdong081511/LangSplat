@@ -1092,3 +1092,20 @@
 - **vs EXP-048 版主表**: figurines a09 使 majority Δ +9.3→+14.8pp 且**首次单独显著**（0.227→0.0215）; waldo raw 使平滑伤害归因更干净（majority 与 a07 零 discordant）; pooled 38:7→39:5, p<0.000001
 - **显著性结论升级**: EXP-041 "全 ns"（pooled p=0.32）→ EXP-048 pooled ★（p<0.0001）→ **EXP-054 三场景单独 ★ + pooled p≈1.4e-7** — 唯一 ns 是 n=13 的 waldo（边界条件）
 - **注**: 本次汇总脚本曾对 binomtest.pvalue 重复 ×2（0.0430/0.9062 为双倍值）, 上表已按 mcnemar.py 精确口径（2×P(X≤min)）校正
+
+---
+
+## 实验编号: EXP-055 — render-mask query × per-scene 最优场组合（优势来源分解实验）
+- **协议**: --query_from_render --query_tile_mask（帧A渲染特征在SAM tile区域均值, query/db同空间）; figurines a09 重训复原验证 ✓（chosen 92.59 与 EXP-052b 逐分一致）
+- **RM 口径四场景矩阵（DINO per-scene 最优场 vs CLIP 场, n=61/54/79/13）**:
+  | 口径 | teatime | figurines | ramen | waldo | pooled McNemar |
+  |---|---|---|---|---|---|
+  | chosen first | +4.9 (91.80/86.89) | 0 (双92.59) | +8.9 (87.34/78.48) | −7.7 | b=6 c=15 p=0.157 ns |
+  | chosen any | +4.9 | 0 | **+8.9 (93.67/84.81)** | −15.4 | b=7 c=15 p=0.268 ns |
+  | majority | **0 (双91.80)** | −3.7 (88.89/92.59) | +5.1 | −7.7 | b=10 c=11 p=1.0 拉平 |
+  | hit-rate | +0.4 | +2.4 | +2.2 | −1.3 | — |
+- **核心结论: RM 口径下 pooled 优势消失（majority 完全拉平 p=1.0）** — EXP-054 主表 pooled p≈1.4e-7 的巨大显著性**主要来自 query 入口端（AE 压缩不对称: CLIP 8d 入口噪声 vs DINO 32d 入口忠实）而非场判别质量本身**
+- **优势分解**: ① 入口适配（主成分, 四场景普适）② 场质量（真实保留项: ramen chosen RM +8.9pp p=0.078 边缘, 唯一双口径显著场景）③ 多帧一致性传导: DINO 场优势 = 2D 入口忠实 × 跨帧一致（RM 下 CLIP majority 回血 78.69→91.80 teatime）
+- **叙事重定位（重要）**: 路由主张从"DINO 场判别质量更高"修正为"**image-query 的入口维度需求（高维）与 text-query 的场维度需求（CLIP 8d text 最优, EXP-018）结构性冲突, 单场不可两全, 路由是解冲突方案**"——EXP-018 证 CLIP 场拉高维度伤 text-query → 单场无法同时最优服务双模态
+- **主表决策**: EXP-054（2D tile query）保留为主口径（现实查询入口: 用户拿2D图查询是真实场景）+ EXP-055 RM 矩阵作为"场质量上界"诚实对照表并列报告
+- JSON: eval_result/adaptive/exp055_{TEA,FIG,RAM,WAL}_{DINO,CLIP}_RM.json (8组)
