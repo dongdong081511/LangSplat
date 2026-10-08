@@ -1109,3 +1109,32 @@
 - **叙事重定位（重要）**: 路由主张从"DINO 场判别质量更高"修正为"**image-query 的入口维度需求（高维）与 text-query 的场维度需求（CLIP 8d text 最优, EXP-018）结构性冲突, 单场不可两全, 路由是解冲突方案**"——EXP-018 证 CLIP 场拉高维度伤 text-query → 单场无法同时最优服务双模态
 - **主表决策**: EXP-054（2D tile query）保留为主口径（现实查询入口: 用户拿2D图查询是真实场景）+ EXP-055 RM 矩阵作为"场质量上界"诚实对照表并列报告
 - JSON: eval_result/adaptive/exp055_{TEA,FIG,RAM,WAL}_{DINO,CLIP}_RM.json (8组)
+
+---
+
+## 实验编号: EXP-056 — LangSplat 官方 3d baseline 四场景全链（Table A 基线行）
+- **日期**: 2026-10-08
+- **分支**: experiment/crossattn-mm
+- **目的**: 补齐 Table A 的 LangSplat 原版（512→3d AE, 官方协议）baseline 行，防"数字不可比"拒稿
+- **协议**: 3d AE + rasterizer 3d 重编译 + 3 level 训练（restore base chkpnt30000）+ evaluate_iou_loc.py 无ens/+ens 双跑，mask_thresh 同主表（figurines 0.45 / ramen 0.55 / waldo 0.40 / teatime 0.40）
+- **关键事件 — 历史特征污染三连抓**:
+  - figurines 首轮 mIoU 0.0127 灾难级 → 三源对照法定位: re-encode cos=-0.002, dim3 特征(9月9)与 3d AE ckpt(8月22)完全错配 → 重编码(roundtrip 0.886)修复
+  - waldo 同款: re-encode cos=-0.057 → 重编码(0.875)修复
+  - ramen 完美匹配(cos=1.0)未受影响; teatime 的 ae_ckpt 是指向官方 teatime.pth(2024年3月)的软链, EXP-001 自训版已被覆盖 → 用官方 ckpt 重跑全链(056e, roundtrip 0.907)
+  - **教训**: 任何历史 dim 特征目录启用前必须 re-encode cos 验证与 ckpt 同源; 污染特征 eval 出 0.01-0.04 级 mIoU 是签名症状
+- **结果** (mIoU / mAcc):
+  | 场景 | 3d baseline 无ens | 3d baseline +ens | 我们的 CLIP 场 无ens | Δ mIoU 无ens |
+  |---|---|---|---|---|
+  | figurines | **0.4825 / 0.7679** | 0.5000 / 0.8214 | 0.5751 / 0.8214 (24d) | **+9.3pp** |
+  | ramen | **0.5308 / 0.6761** | 0.5038 / 0.7042 | 0.5387 / 0.7042 (8d) | +0.8pp |
+  | waldo_kitchen | **0.4728 / 0.7727** | 0.3835 / 0.6364 | 0.5870 / 0.8636 (8d) | **+11.4pp** |
+  | teatime | **0.6499 / 0.8983** | 0.6441 / 0.9322 | 0.6705 / 0.8814 (8d) | **+2.1pp** |
+- **结论**:
+  1. **四场景 mIoU 全胜**: 我们的维度优化 CLIP 场全部 ≥ LangSplat 3d 原版 — figurines +9.3pp / waldo +11.4pp / teatime +2.1pp / ramen +0.8pp; +ens 口径 teatime 扩大到 +4.9pp (0.6932 vs 0.6441)
+  2. teatime 的 mAcc 是唯一例外 (3d 0.8983/0.9322 vs 我们 0.8814/0.8983), 官方 ckpt 定位更好但分割边界更差 — mIoU/mAcc 分离与 EXP-017 结论一致
+  3. 3d 压缩(170:1)对 dense 小物体场景(figurines)伤害最大, 印证维度扫描结论(密集小物体需高维)
+  4. ensemble 对 3d 场一升三降(figurines +1.8 / ramen -2.7 / waldo -8.9 / teatime -0.6), 与我们 CLIP 场的 ensemble 两升两降形成对照, ensemble 兼容性维度相关再添证
+- **056e 工程坑三连** (2026-10-09 凌晨修复):
+  - poll 完成标记错配: 056e 等 `EXP056D_ALL_DONE` 但 056d 复制自 056c 时 echo 忘改实际打 `EXP056C_ALL_DONE` → 056e 空转 sleep 40 分钟; 教训: **链式脚本的完成标记必须全局唯一且 grep 验证**
+  - eval 两连败: ① `label/teatime_3d` 软链缺失(056b 只建了 figurines/ramen/waldo 三个) → UnboundLocalError: h; ② ae_ckpt 路径少一层 — teatime 结构是 `ckpt/teatime/ae_ckpt/best_ckpt.pth`(软链→官方 teatime.pth), 与 figurines/waldo 的 `ckpt/{scene}/best_ckpt.pth` 不同层
+  - 教训: **每场景 eval 三要素(label 软链/ae_ckpt 路径/特征同源)逐场景核对, 不能假设四场景目录结构一致**
