@@ -86,6 +86,21 @@
 
 **显著性叙事升级线**（论文 limitation 节可写）：EXP-041 全 ns（pooled p=0.32）→ EXP-048 pooled ★（p<0.0001）→ **EXP-054 三场景单独 ★ + pooled p≈1.4e-7**——唯一 ns 是 n=13 的 waldo，且其 2D 入口判据（自蒸馏启用前置条件）正确预测了它，负场本身就是方法边界的验证而非漏洞。
 
+### B-4 场质量上界对照表（EXP-055，RM 协议，**必须与主表并列报告**）
+
+协议：render-mask query（帧 A 渲染特征在 SAM tile 区域取均值，query/db 同为 3D 渲染空间）——剥离 query 端 AE 压缩噪声后的"场质量"口径。配置同主表（teatime a07 / figurines a09 / ramen a07 / waldo raw）。
+
+| 口径 | teatime | figurines | ramen | waldo | pooled |
+|---|---|---|---|---|---|
+| chosen any | +4.9pp | 0 | **+8.9pp (p=0.078)** | −15.4pp | p=0.268 ns |
+| majority | 0 | −3.7pp | +5.1pp | −7.7pp | **p=1.0 拉平** |
+
+**优势来源分解（EXP-055 核心贡献，写法建议）**：
+1. **主表（2D tile query）的 pooled p≈1.4e-7 主要来自 query 入口端**——AE 压缩不对称（CLIP 8d 入口噪声大 vs DINO 32d 入口忠实），RM 剥离后 majority 完全拉平
+2. **路由主张的精确表述**：不是"DINO 场判别质量更高"（RM 证伪），而是"**image-query 的入口维度需求（高维）与 text-query 的场维度需求（CLIP text 最优 8d，EXP-018 维度曲线）结构性冲突——单场不可两全，路由是解冲突方案**"。EXP-018 已证 CLIP 场拉高维度伤 text-query，堵住"把 CLIP 场也训成 32d"的反驳
+3. **ramen 是唯一场质量优势场景**（RM chosen +8.9pp，n=79 最大样本，双口径均正）——保留为"场质量增益存在但非普适"的诚实表述
+4. **多帧一致性传导**：DINO 场优势 = 入口忠实性 × 跨帧一致性（teatime CLIP 场 RM majority 78.69→91.80 回血 = CLIP 场的 2D 入口噪声同时破坏单帧精度与多帧稳定性）
+
 ---
 
 ## 4. 消融表 C
