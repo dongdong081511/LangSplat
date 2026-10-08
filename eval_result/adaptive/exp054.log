@@ -1,0 +1,24 @@
+=== waldo raw train start 23:49:10
+Training complete. [08/10 00:25:17]
+output/waldo_kitchen_dino_32d_1/chkpnt30000.pth
+Rendering progress: 0it [00:00, ?it/s]Rendering progress: 0it [00:00, ?it/s]
+output/waldo_kitchen_dino_32d_1/train/ours_None/renders_npy/00000.npy
+Training complete. [08/10 01:02:39]
+output/waldo_kitchen_dino_32d_2/chkpnt30000.pth
+Rendering progress: 0it [00:00, ?it/s]Rendering progress: 0it [00:00, ?it/s]
+output/waldo_kitchen_dino_32d_2/train/ours_None/renders_npy/00000.npy
+Training complete. [08/10 01:40:18]
+output/waldo_kitchen_dino_32d_3/chkpnt30000.pth
+Rendering progress: 0it [00:00, ?it/s]Rendering progress: 0it [00:00, ?it/s]
+output/waldo_kitchen_dino_32d_3/train/ours_None/renders_npy/00000.npy
+[WALDO_raw] chosen-level top1: 7/13 = 53.85%
+[WALDO_raw] chosen-level top1 (any-bbox): 10/13 = 76.92%
+[WALDO_raw] EXP-048 multi-frame: all-any 11/13 = 84.62%  majority 10/13 = 76.92%  hit-rate 65.38%
+Traceback (most recent call last):
+  File "/home/xiedexia/project/LangSplat/eval/mcnemar.py", line 54, in <module>
+    main()
+  File "/home/xiedexia/project/LangSplat/eval/mcnemar.py", line 26, in main
+    dc, C = load(a.clip_json)
+  File "/home/xiedexia/project/LangSplat/eval/mcnemar.py", line 13, in load
+    with open(path) as f:
+FileNotFoundError: [Errno 2] No such file or directory: 'eval_result/mcnemar/WALDO_CLIP8d.json'

@@ -1061,3 +1061,16 @@
   2. **α=1.0 ≡ 0.95**: 5% 2D 掺混已不敏感; 定点自蒸馏稳定 (未复现 EXP-037 iter2 退化 — 那是动态迭代重渲, 此为固定 a07 渲染监督)
   3. **主表口径决策**: figurines 主配置 = **α=0.9** (双口径平衡 92.59/92.59, hit-rate 89.61); α≥0.95 高 chosen (96.30) + majority 回落 (−1对) 的过拟合分叉进消融分析节
   4. EXP-052 系列 (a/b/c/d) 完整 dose-response 消融 = 论文 C-1 表升级版: 唯一系统性 α 曲线研究, 含双口径分叉机理
+
+---
+
+## 实验编号: EXP-054 Phase W — waldo raw 场重训（per-scene 最优 α 统一主表 ①）
+- **背景**: EXP-040 判定 waldo 平滑有害（a07 −7.7pp），per-scene 最优 = raw；raw 场 ckpt/渲染已在清理中删除，从 base ckpt 重训复现
+- **结果**（n=13）: chosen 53.85 (7/13) / any **76.92 (10/13) = EXP-040 历史值逐分复现** ✓ / majority 76.92 (10/13) / hit-rate 65.38% / all-any 84.62%
+- **McNemar**: chosen any vs CLIP8d 场 −15.38pp (b=2 c=0, p=0.5 ns); vs a07 +7.69pp (c=1, p=1.0) ✓ raw 优
+- **majority McNemar**: raw ≡ a07 **零 discordant 对**（两者完全同构）— α=0.7 的 chosen 伤害（−1对）在 majority 投票下完全抵消; raw vs CLIP8d majority −15.4pp (b=2 c=0, p=1.0 ns)
+- **结论**:
+  1. raw 场重训忠实（逐分复现 EXP-040）✓
+  2. **主表 waldo 行 = raw 场**: chosen 口径最优（76.92 vs a07 69.23），majority 口径与 a07 完全同值 — 平滑对 waldo 的伤害是单帧现象，多帧投票天然免疫
+  3. waldo 仍是唯一负场（vs CLIP −15.4pp 双口径 ns, n=13）— 边界条件叙事不变
+- **工程教训**: run_exp054.sh 的 mcnemar 调用从 eval/ cwd 用了根目录相对路径, FileNotFoundError + set -e 杀链, ramen 阶段未启动 → run_exp054b.sh 修复续跑; mcenemar.py 必须从项目根调用
