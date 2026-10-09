@@ -1169,3 +1169,9 @@
   - 正/负 tile 对相似度分布: CLIP pos 0.684/neg 0.573 gap +0.111 AUC 0.745; DINOv2 0.632/0.441 gap +0.191 AUC 0.772; DINOv3_mean224 **0.940/0.921 gap +0.018 AUC 0.487**; DINOv3_cls224 **pos cos=1.000 std=0 (所有tile CLS 常数化)**
   - 根因: ①gram anchoring 各向同性正则在"黑底 tile crop"退化输入域把防坍缩变成制造坍缩 (全部 tile cos≥0.92) ②语义抽象层级错位 (场景级 vs 实例判别) ③DINOv2 成功条件=负样本分散 (neg mean 0.441) 保留实例信息
   - 论文点: 教师适配度判据 = 特征空间在任务输入域上的正负分离度 AUC, 非模型新旧/规模; DINOv2 vs DINOv3 对照构成"各向异性特征空间才有实例判别"的机理证据
+- **EXP-057d 坍缩机理裁决 (eval/dino3_collapse_hypo.py): H1 池化污染否定 / H2 特征空间同质化实锤**
+  - 对照: full-mean gap +0.0015 AUC 0.494 vs **masked-mean (剔除黑patch) gap -0.0029 AUC 0.570 仍坍缩** — 黑背景只是表象, DINOv3 对 OOD tile 的特征向量本身同方向; cls 全体 tile cos=1.0000 (p5=p95=1.0) 完全常数化
+  - 机理 (最合理解释非因果证明): gram anchoring 锚定自然图像域的 gram 结构防 dense 退化, 但对分布外输入 (黑底44%+crop) 的落点无约束 — DINOv3 把 OOD tile 全映射到球面极窄区 (cos 0.89~1.00); DINOv2 无此正则, 特征方向谱更宽 (neg cos 0.441 分散), 退化输入下判别性存活
+  - 备选不互斥因素: 训练规模扩大→语义抽象层级上移, 实例级判别被场景级语义淹没; 448 无救因同质化是域级现象与网格密度正交
+  - 证据等级: H1 排除+坍缩固有+DINOv2对照 = 强相关证据; 无"去gram anchoring对照"权重, 非因果证明
+  - 论文点: 教师选择判据=特征空间在任务输入域的正负分离度 AUC, 榜单性能不保证; DINOv3 dense benchmark 更强但 LangSplat tile 域 AUC=0.49 低于随机
