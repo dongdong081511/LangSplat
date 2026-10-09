@@ -255,3 +255,9 @@ $$F'_{tile} = \alpha \cdot F_{render}(tile) + (1-\alpha) \cdot F_{2D}(tile)$$
 5. **信息碎片化**：DINO 场 all-any=100%（信息完整在场）但散落 (level×frame)，argmax 协议奖励 CLIP 的集中场——EXP-060
 
 **方法启示（自适应路由的理论依据）**：任务路由适用条件三条——①2D 判别度领先（EXP-040 前置判据）②教师视角方差可在 GS 平均下存活（EXP-061）③validation 帧上 2D→3D lift 确认。三条同时满足才路由到 DINO 场，否则回退 CLIP 场——per-scene 自适应路由（waldo 自动回退 → 框架矩阵 4/4），路由决策全部基于 validation，无测试集偷看。
+
+**GT-free 自动路由判据：两族信号实验证伪（EXP-062，防审稿人追问"为什么不用自动判据"的消融弹药）**：
+- **2D 入口统计失效**（EXP-062a）：SAM 伪类 2D 伪检索 DINO 四场景全胜（含 waldo 31.5% vs 21.5%）——2D 判别度无法预测 3D 反转；跨帧一致性无法区分 waldo 与 ramen（cos gap 同为 −0.177 但胜者相反）
+- **场级伪检索失效**（EXP-062b）：SAM 段伪查询在渲染场上检索（配对协议：同帧对/同段/同 query，峰值检索镜像部署机制，±段粒度两变体），GT 评估中 −23pp（waldo）~+9.8pp（teatime）的真实场差距被压缩到 0~4pp 噪声区，方向随机，路由 ≤3/4
+- **机理**：无 GT 则无法区分"语义物体段"与"碎片段"，伪检索信号被 SAM 段身份噪声主导；语义级判别度恰是 GT 提供的信息
+- **论文表述**：路由作为设计选择由 GT 消融矩阵支撑（EXP-054/039/040），与"判据是否自动"正交；GT-free 自动路由（2D 统计 + 场级伪检索两族）经系统实验证伪，列为 future work（可能方向：生成式跨视角一致性、开放词汇段落解析）。工具：eval/eval_gtfree_router.py（062a）、eval/eval_gtfree_router_field.py（062b）
