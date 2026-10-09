@@ -1175,3 +1175,10 @@
   - 备选不互斥因素: 训练规模扩大→语义抽象层级上移, 实例级判别被场景级语义淹没; 448 无救因同质化是域级现象与网格密度正交
   - 证据等级: H1 排除+坍缩固有+DINOv2对照 = 强相关证据; 无"去gram anchoring对照"权重, 非因果证明
   - 论文点: 教师选择判据=特征空间在任务输入域的正负分离度 AUC, 榜单性能不保证; DINOv3 dense benchmark 更强但 LangSplat tile 域 AUC=0.49 低于随机
+- **EXP-058 waldo native 分辨率救援 (eval/dino2_waldo_rescue.py + run_exp058.sh): 2D 翻绿但 3D 未传导, 两断点定位**
+  - 快测消融 (cross top1 n=52): base224 42.31(复现✓) / m224 44.23 / f448 50.00 / m448 50.00 / pad10 34.62(上下文有害) / gem3 17.31(崩) / **native(原分辨率 pad 14 倍数) 59.62 (+15.4pp vs CLIP 44.23, top5 92.31 追平)**
+  - 机理: waldo 60% tile < 45×45 (中位 35×35), 基线 resize224 = 6 倍上采样插值模糊毁判别力; native 9-patch 全实例内容零损失。DINOv2 448 有效 (+5.8) vs DINOv3 448 无效 = 特征健康度对照 (输入保真度 vs 域级坍缩)
+  - 全链路 (AE32d→3D×3→eval): native 场 first 38.46 / any 61.54 / majority 46.15 — 比 224 raw 场 (53.85/76.92/76.92) 更差, vs CLIP 场 -30.77pp (b=4 c=0 ns)
+  - **两断点分诊**: ①AE 32d 瓶颈: native 768d 59.62 → dim32 48.08 (-11.5pp), 判别差分方向被线性瓶颈截断 (重建 cos 0.847 反而>224 的 0.815, 证明非重建质量而是判别信息丢失, EXP-030 同构) ②3D 传导: 同为 48.08% 的 2D 起点, 224 版 3D 场 76.92 any vs native 版 61.54 (-15.4pp), native 尖峰特征分布 (9-patch) 对 GS 拟合/渲染不友好
+  - 结论: native 天花板被 32d AE 卡死; waldo 翻正的必要条件=64d rasterizer 改造 (任务4 由可选升级为必要); dim32 下两特征 2D 打平 (48.08=48.08) 亦证 32d 是硬瓶颈
+  - 附注: native 全帧提取 eval/extract_native_all.py (float32! AE dataset 无 dtype 转换, half 会崩); 快测 unpack 坑: cv2 图像 (H,W,C) vs tensor (C,H,W) 的 shape unpack 顺序
