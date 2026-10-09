@@ -238,3 +238,20 @@ $$F'_{tile} = \alpha \cdot F_{render}(tile) + (1-\alpha) \cdot F_{2D}(tile)$$
 1. ramen 跨帧重复最高（99%）但 DINO majority 增益最大（+25.3pp）——跨帧重复是任务正常难度，不惩罚 3D 场；
 2. waldo knife 同帧聚集 5 实例/帧，majority 口径下双方 8/9 平手——多帧投票抵消单帧歧义（修正 EXP-039"knife×9 惩罚"叙事：该惩罚只在 chosen/first 口径成立）；
 3. waldo majority 残余差距全在 plate（n=2）——小样本场景（n<20）必须报 per-label 表，场景级均值会被 1-2 个标签噪声主导（teatime apple −20%、figurines green toy chair 0/2 同理）。
+
+---
+
+## 附录：waldo 负场机理（五层证据链，EXP-061 定稿）
+
+> 用途：limitation / analysis 节。回答"为什么 waldo 场景 DINO 不如 CLIP"——不是缺陷而是方法边界的物理成因，与任务路由主张自洽。
+
+**一句话**：GS 特征场按构造视角恒定（每 Gaussian 一份特征），因此它对教师特征是一台"视角方差切除机"——CLIP 特征视角方差≈0（全保留），DINOv2 特征的视角方差恰是判别力所在（被切除）。waldo 的小物体×金属反光把效应推到极致，使 DINO 的 2D 入口优势（+15.4pp）在 3D 传导中反转为 −23pp。
+
+**五层链条**（每层有实验锚点）：
+1. **教师视角依赖性**：DINOv2 patch 级特征逐帧剧变，CLIP global 语义特征视角不变（跨帧一致性差 5~7pp，EXP-036a）
+2. **视角恒定拟合视角可变监督 = 强制跨视角平均**（L1 最优解），高频判别分量按视角方差衰减；同一平均对 CLIP 是降噪（2D→3D +48.1pp）对 DINO 是毁信号（+9.6pp）——EXP-059
+3. **压缩率排除维度解释**：64d 零损耗（2D 快测 59.62%=768d）但 3D 仍输 23pp，瓶颈在视角方差非信息保留——EXP-059
+4. **场景放大器（乘积效应）**：跨帧特征 cos 分组测量——knife（金属×小）Δ(D−C)=−0.191 vs 非金属 −0.085（2.3×）vs sink（金属×大面积）仅 −0.017：伤害=金属度×小尺寸，单独金属不足以致伤——EXP-061，knife 独占 23/25 检索对
+5. **信息碎片化**：DINO 场 all-any=100%（信息完整在场）但散落 (level×frame)，argmax 协议奖励 CLIP 的集中场——EXP-060
+
+**方法启示（自适应路由的理论依据）**：任务路由适用条件三条——①2D 判别度领先（EXP-040 前置判据）②教师视角方差可在 GS 平均下存活（EXP-061）③validation 帧上 2D→3D lift 确认。三条同时满足才路由到 DINO 场，否则回退 CLIP 场——per-scene 自适应路由（waldo 自动回退 → 框架矩阵 4/4），路由决策全部基于 validation，无测试集偷看。
