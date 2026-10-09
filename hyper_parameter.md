@@ -1211,3 +1211,26 @@
 3. waldo 的 3D 失败是管线级 (多视角平均+level 选择偏向 CLIP 式平滑场), 非单点可修 — 论文 limitation 完整闭环: "2D 入口已证明可翻正 (+15.4pp), 3D 传导失败归因于 GS 场对 DINOv2 高频判别结构的平均化"
 
 **附注**: mcnemar.py 不支持 majority 口径 (报错但 any/first 已覆盖方向); EXP-059 结果与 EXP-054 的 waldo raw 场不可互换 (特征版本不同)
+
+## EXP-060 (2026-10-10) waldo eval 侧救援全扫 (跨level聚合 + RM query) — 全负, waldo 翻正正式关闭
+
+**目的**: EXP-059 后剩余两个免训练杠杆: A=跨 level 聚合替代 chosen-level, B=RM render-mask query。公平性设计: 所有新口径在 DINO/CLIP 两场同协议配对计算。
+
+**四组矩阵** (waldo, 13 pairs, any-bbox):
+
+| 聚合口径 | DINO 64dn tile | DINO 64dn RM | CLIP 8d tile | CLIP 8d RM |
+|---|---|---|---|---|
+| chosen-level | 69.23 | 61.54 | **92.31** | 84.62 |
+| level-any (任一级命中) | 92.31 | 92.31 | 92.31 | **100.0** |
+| level-vote (过半) | 69.23 | 76.92 | **92.31** | 76.92 |
+| mf majority (帧级) | 61.54 | 61.54 | **92.31** | 84.62 |
+| mf all-any | 92.31 | 100.0 | 100.0 | 100.0 |
+
+**结论**:
+1. 杠杆 A 失败: level-vote (69.23/76.92) 不及 CLIP chosen (92.31); level-any 打平但 CLIP RM 版反到 100% — 最宽容口径下 DINO 也只有平局无优势
+2. 杠杆 B 失败: RM query 对两场都无回血 (DINO 69.23→61.54, CLIP 92.31→84.62) — EXP-055 的 CLIP RM 回血不泛化到 waldo
+3. CLIP 场异常鲁棒: chosen 口径 92.31 且所有口径 ≥76.92; DINO 无任何口径严格超过 CLIP
+4. waldo 3D 翻正的全部 eval 侧路径穷尽 (chosen/level-any/level-vote/majority/RM), 均无法翻盘 → C (α平滑 3h) 按预定判据不开: 平滑历史最大增益 +15pp 仍到不了 CLIP 92.31 的 chosen 水平
+5. D (自适应路由: validation 选场) 进入论文方法节 — 不依赖 waldo 实验, 框架自然延伸
+
+**工具变更**: eval/eval_image_query.py 新增 EXP-060 统计 (level-any / level-vote, 全场景通用, 记录在 records 外聚合行)

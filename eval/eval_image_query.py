@@ -100,6 +100,8 @@ def main():
     stats = {li: [0, 0, 0, 0] for li in range(3)}  # n, hit_first, hit_any, (unused)
     chosen = [0, 0, 0]  # n, hit_first, hit_any
     multi = [0, 0, 0.0]  # EXP-048: n_mf_all_any, n_mf_majority, sum_mf_rate
+    lv_any = [0, 0]  # EXP-060: level-any (n, hit_any) — 任一 level top1 命中即算
+    lv_vote = [0, 0]  # EXP-060: level-vote (n, hit_any) — 过半 level top1 命中即算
     records = []  # per-pair results for McNemar
 
     for frA in frames:
@@ -180,6 +182,17 @@ def main():
                 stats[l2][0] += 1
                 stats[l2][1] += int(hf)
                 stats[l2][2] += int(ha)
+            # EXP-060: cross-level aggregation (fair comparison requires running both fields)
+            if level_best:
+                lv_hits = []
+                for l2, (sim2, frB2, pt2, bboxes2) in level_best.items():
+                    y2, x2 = pt2
+                    ha2 = any(b[0] <= x2 <= b[2] and b[1] <= y2 <= b[3] for b in bboxes2)
+                    lv_hits.append(int(ha2))
+                lv_any[0] += 1
+                lv_any[1] += int(any(lv_hits))
+                lv_vote[0] += 1
+                lv_vote[1] += int(np.mean(lv_hits) >= 0.5)
 
     print(f'[{args.tag}] query_subdir={args.query_subdir}')
     print(f'[{args.tag}] chosen-level top1: {chosen[1]}/{chosen[0]} = '
@@ -189,6 +202,9 @@ def main():
     n = max(chosen[0], 1)
     print(f'[{args.tag}] EXP-048 multi-frame: all-any {multi[0]}/{n} = {multi[0] / n:.2%}  '
           f'majority {multi[1]}/{n} = {multi[1] / n:.2%}  hit-rate {multi[2] / n:.2%}')
+    print(f'[{args.tag}] EXP-060 level-any: {lv_any[1]}/{lv_any[0]} = '
+          f'{lv_any[1] / max(lv_any[0], 1):.2%}  level-vote: {lv_vote[1]}/{lv_vote[0]} = '
+          f'{lv_vote[1] / max(lv_vote[0], 1):.2%}')
     for li in range(3):
         n, hf, ha, _ = stats[li]
         print(f'[{args.tag}] level{li + 1} pairs: {n} top1(first)={hf / max(n, 1):.2%} '
