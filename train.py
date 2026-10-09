@@ -62,6 +62,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     viewpoint_stack = None
     cons_buf = {}   # EXP-044: (frame, tile_id) -> EMA anchor [C] on cuda
     tid_cache = {}  # EXP-044: frame name -> cuda tile-id map [H,W]
+    gtt_cache = {}  # EXP-046: frame name -> normalized 2D GT tile means [T,C]
     ema_loss_for_log = 0.0
     progress_bar = tqdm(range(first_iter, opt.iterations), desc="Training progress")
     first_iter += 1
@@ -105,12 +106,17 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             gt_language_feature, language_feature_mask = viewpoint_cam.get_language_feature(language_feature_dir=dataset.lf_path, feature_level=dataset.feature_level)
             Ll1 = l1_loss(language_feature*language_feature_mask, gt_language_feature*language_feature_mask)
             loss = Ll1
-            if opt.lf_cons_weight > 0:  # EXP-044: EMA cross-view tile consistency
+            need_tile_means = opt.lf_cons_weight > 0 or opt.lf_rel_weight > 0
+            if need_tile_means:
                 name = viewpoint_cam.image_name
                 if name not in tid_cache:
                     s = np.load(os.path.join(dataset.lf_path, name + '_s.npy'))[dataset.feature_level].astype(np.int64)
                     tid_cache[name] = torch.from_numpy(s).cuda()
                 tid_map = tid_cache[name]
+                if tid_map.shape != language_feature.shape[1:]:
+                    tid_map = Fn.interpolate(tid_map[None, None].float(), size=language_feature.shape[1:],
+                                             mode='nearest').int()[0, 0]
+                    tid_cache[name] = tid_map
                 valid = tid_map >= 0
                 rv = language_feature[:, valid]                       # [C, K]
                 uniq, inv = torch.unique(tid_map[valid], return_inverse=True)
@@ -120,6 +126,21 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                     0, inv, torch.ones_like(inv, dtype=torch.float32))
                 keep = cnt >= 30
                 mk = (sums[:, keep] / cnt[keep].unsqueeze(0)).t()     # [T, C] render tile means
+            if opt.lf_rel_weight > 0:  # EXP-046: tile similarity structure distillation
+                if name not in gtt_cache:
+                    gv = gt_language_feature[:, valid].detach()       # [C, K]
+                    gsums = torch.zeros(gv.shape[0], uniq.numel(),
+                                        device=gv.device).index_add_(1, inv, gv)
+                    gmk = (gsums[:, keep] / cnt[keep].unsqueeze(0)).t()  # [T, C]
+                    gtt_cache[name] = Fn.normalize(gmk, dim=-1)
+                F2 = gtt_cache[name]                                  # [T, C] normalized
+                R2 = Fn.normalize(mk, dim=-1)
+                if F2.shape[0] >= 2:
+                    S2, S3 = F2 @ F2.t(), R2 @ R2.t()
+                    iu = torch.triu_indices(S2.shape[0], S2.shape[0], 1)
+                    rel = Fn.mse_loss(S3[iu[0], iu[1]], S2[iu[0], iu[1]].detach())
+                    loss = loss + opt.lf_rel_weight * rel
+            if opt.lf_cons_weight > 0:  # EXP-044: EMA cross-view tile consistency
                 keys = [(name, int(t)) for t in uniq[keep].tolist()]
                 anchors = [cons_buf.get(k) for k in keys]
                 known = [i for i, a in enumerate(anchors) if a is not None]
