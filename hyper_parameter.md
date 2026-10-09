@@ -1165,3 +1165,7 @@
   - 结果 (TOTAL top1, cross/intra): mean224 32.69/16.38, **cls224 17.31/11.21**, **mean448 28.85/15.52**, cls448 30.77/9.48 — vs CLIP 44.23/31.03
   - 结论: ①cls_token 更差(top5 崩至28.85%), CLS 无更强 tile 级判别 ②448 无增益, 网格密度非瓶颈 ③救援最优组仍落后 CLIP 11.5pp — **不是协议问题, 是 DINOv3 特征表示不适配 tile 级实例检索**, 与 CLIP (global强/patch无grounding) 形成互补负证据
   - 附注: 救援版 mean224 (32.69) 高于 EXP-057 原版 (19.23), 源于 tile 重建语义差异 (段表mask重建 vs SAM实例 get_seg_img crop); 工具 eval/dinov3_rescue_test.py 留档
+- **EXP-057c 失败机理诊断 (eval/dino3_failure_diag.py): DINOv3 特征坍缩实锤**
+  - 正/负 tile 对相似度分布: CLIP pos 0.684/neg 0.573 gap +0.111 AUC 0.745; DINOv2 0.632/0.441 gap +0.191 AUC 0.772; DINOv3_mean224 **0.940/0.921 gap +0.018 AUC 0.487**; DINOv3_cls224 **pos cos=1.000 std=0 (所有tile CLS 常数化)**
+  - 根因: ①gram anchoring 各向同性正则在"黑底 tile crop"退化输入域把防坍缩变成制造坍缩 (全部 tile cos≥0.92) ②语义抽象层级错位 (场景级 vs 实例判别) ③DINOv2 成功条件=负样本分散 (neg mean 0.441) 保留实例信息
+  - 论文点: 教师适配度判据 = 特征空间在任务输入域上的正负分离度 AUC, 非模型新旧/规模; DINOv2 vs DINOv3 对照构成"各向异性特征空间才有实例判别"的机理证据
