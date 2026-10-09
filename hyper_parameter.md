@@ -1160,3 +1160,8 @@
   3. 机理猜测(未深挖): patch 16 网格密度 (14×14 vs DINOv2 16×16) + DINOv3 dense 特征优势不在 global-mean 池化协议; 若未来重试应先测 cls_token / 更高分辨率输入
   4. 任务路由主张不变: waldo 负场维持, 归因仍为"DINO 系 2D 入口无优势+平滑无增益基础"(EXP-040), DINOv3 换教师也不可救
 - **成本**: 权重下载+兼容补丁+提取器 ~1.5h; waldo 特征提取 187 帧 5.5h (GPU 共享被拖慢)
+- **EXP-057b 救援消融 (按机理猜测重试, 全部证伪, 方向终判关闭)**:
+  - 设计: eval/dinov3_rescue_test.py 复用已落盘段表(免重跑SAM), 4级段表并集重建tile, 一次前向同产 patch-mean 与 cls 两种池化 × 224/448 两档, 4组直接进快测协议
+  - 结果 (TOTAL top1, cross/intra): mean224 32.69/16.38, **cls224 17.31/11.21**, **mean448 28.85/15.52**, cls448 30.77/9.48 — vs CLIP 44.23/31.03
+  - 结论: ①cls_token 更差(top5 崩至28.85%), CLS 无更强 tile 级判别 ②448 无增益, 网格密度非瓶颈 ③救援最优组仍落后 CLIP 11.5pp — **不是协议问题, 是 DINOv3 特征表示不适配 tile 级实例检索**, 与 CLIP (global强/patch无grounding) 形成互补负证据
+  - 附注: 救援版 mean224 (32.69) 高于 EXP-057 原版 (19.23), 源于 tile 重建语义差异 (段表mask重建 vs SAM实例 get_seg_img crop); 工具 eval/dinov3_rescue_test.py 留档
