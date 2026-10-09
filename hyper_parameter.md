@@ -1138,3 +1138,25 @@
   - poll 完成标记错配: 056e 等 `EXP056D_ALL_DONE` 但 056d 复制自 056c 时 echo 忘改实际打 `EXP056C_ALL_DONE` → 056e 空转 sleep 40 分钟; 教训: **链式脚本的完成标记必须全局唯一且 grep 验证**
   - eval 两连败: ① `label/teatime_3d` 软链缺失(056b 只建了 figurines/ramen/waldo 三个) → UnboundLocalError: h; ② ae_ckpt 路径少一层 — teatime 结构是 `ckpt/teatime/ae_ckpt/best_ckpt.pth`(软链→官方 teatime.pth), 与 figurines/waldo 的 `ckpt/{scene}/best_ckpt.pth` 不同层
   - 教训: **每场景 eval 三要素(label 软链/ae_ckpt 路径/特征同源)逐场景核对, 不能假设四场景目录结构一致**
+
+## 实验编号: EXP-057 — DINOv3 教师升级（waldo 翻盘尝试）
+- **日期**: 2026-10-09
+- **分支**: experiment/crossattn-mm
+- **目的**: DINOv2 场在 waldo 是唯一负场（2D 入口优势归零），换 DINOv3 ViT-B/16 教师看 2D tile 检索能否翻绿（前置判据），翻绿才进 3D 全链
+- **实现**:
+  - 权重: facebook/dinov3-vitb16-pretrain-lvd1689m (HF gated; fbaipublicfiles 直链 403; **ModelScope 官方转载仓可下** model.safetensors 342MB)
+  - 加载: transformers 4.55 要求 torch>=2.1 (环境 2.0.1 不可用) → 官方 repo torch 实现 + 手写 HF→官方键名映射 (qkv 合并 cat[q,k,v]/k_bias=0, bias_mask=[1,0,1], mask_token squeeze, register_tokens→storage_tokens, patch_embed.proj)
+  - py3.9 兼容: 41 文件 `X | None` 注解加 future import + kw_only 移除 + torch._dynamo/_compiler 引用 guard + hubconf 裁剪只留 backbones
+  - 接入: preprocess.py --dino_v3 开关 → _f_dino3.npy (不覆盖 DINOv2); 提取器 mm_langsplat/extractors/dinov3_extractor.py
+- **快测** (tile_retrieval_test.py, waldo 187 帧, intra n=116 / cross n=52, top1):
+  | 教师 | cross | intra | cross top5 |
+  |---|---|---|---|
+  | CLIP | **44.23%** | **31.03%** | 92.31% |
+  | DINOv2 | 42.31% | 29.31% | 84.62% |
+  | DINOv3 | **19.23%** | **18.10%** | 55.77% |
+- **结论**: 方向关闭
+  1. DINOv2 ≈ CLIP 打平在快测中复现 (EXP-039 "waldo 2D 入口优势归零" 的 2D 空间确认)
+  2. DINOv3 tile-mean 协议下判别性只有 CLIP 的 43%, 一票否决 3D 全链 (AE+平滑+训练 ~4h GPU 省下)
+  3. 机理猜测(未深挖): patch 16 网格密度 (14×14 vs DINOv2 16×16) + DINOv3 dense 特征优势不在 global-mean 池化协议; 若未来重试应先测 cls_token / 更高分辨率输入
+  4. 任务路由主张不变: waldo 负场维持, 归因仍为"DINO 系 2D 入口无优势+平滑无增益基础"(EXP-040), DINOv3 换教师也不可救
+- **成本**: 权重下载+兼容补丁+提取器 ~1.5h; waldo 特征提取 187 帧 5.5h (GPU 共享被拖慢)

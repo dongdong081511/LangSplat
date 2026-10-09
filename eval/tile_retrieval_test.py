@@ -15,11 +15,12 @@ import numpy as np
 import cv2
 
 ROOT = '/home/xiedexia/project/LangSplat/dataset/lerf_ovs'
-SCENE = 'teatime'
+SCENE = 'waldo_kitchen'
 LABEL_DIR = os.path.join(ROOT, 'label', SCENE)
 SOURCES = {
     'CLIP': os.path.join(ROOT, SCENE, 'language_features'),
-    'DINO': os.path.join(ROOT, SCENE, 'language_features_dino'),
+    'DINOv2': os.path.join(ROOT, SCENE, 'language_features_dino'),
+    'DINOv3': os.path.join(ROOT, SCENE, 'language_features_dino3_tiles'),
 }
 LEVEL_NAMES = ['default', 's', 'm', 'l']
 

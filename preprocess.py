@@ -23,14 +23,19 @@ except ImportError:
 
 # Multi-modal: DINOv2 extractor (lazy loaded, only when --use_dino flag set)
 _dino_model = None
+_DINO_V3 = False  # set by --dino_v3 in main
 
 def get_dino_model():
     global _dino_model
     if _dino_model is None:
         import sys
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-        from mm_langsplat.extractors.dino_extractor import DINOv2Extractor
-        _dino_model = DINOv2Extractor(model_name='dinov2_vitb14').to('cuda')
+        if _DINO_V3:
+            from mm_langsplat.extractors.dinov3_extractor import DINOv3Extractor
+            _dino_model = DINOv3Extractor().to('cuda')
+        else:
+            from mm_langsplat.extractors.dino_extractor import DINOv2Extractor
+            _dino_model = DINOv2Extractor(model_name='dinov2_vitb14').to('cuda')
     return _dino_model
 
 
@@ -229,7 +234,7 @@ def create(image_list, data_list, save_folder, extract_dino=False, dense=False, 
         }
         sava_numpy(save_path, curr)
         if extract_dino:
-            dino_path = save_path + '_f_dino.npy'
+            dino_path = save_path + ('_f_dino3.npy' if _DINO_V3 else '_f_dino.npy')
             np.save(dino_path, dino_embeds_all[i, :total_lengths[i]].numpy())
 
 def sava_numpy(save_path, data):
@@ -427,6 +432,8 @@ if __name__ == '__main__':
     parser.add_argument('--sam_ckpt_path', type=str, default="ckpts/sam_vit_h_4b8939.pth")
     parser.add_argument('--use_dino', action='store_true',
                         help='Also extract DINOv2 features per tile (saved as _f_dino.npy)')
+    parser.add_argument('--dino_v3', action='store_true',
+                        help='Use DINOv3 ViT-B/16 teacher instead of DINOv2 (saved as _f_dino3.npy)')
     parser.add_argument('--save_subdir', type=str, default='language_features',
                         help='Subdirectory name for saving features')
     parser.add_argument('--dense_tiles', action='store_true',
@@ -438,7 +445,7 @@ if __name__ == '__main__':
     parser.add_argument('--clip_n_dims', type=int, default=512)
     args = parser.parse_args()
     torch.set_default_dtype(torch.float32)
-
+    _DINO_V3 = args.dino_v3  # module-level assignment (main runs at module scope)
     dataset_path = args.dataset_path
     sam_ckpt_path = args.sam_ckpt_path
     img_folder = os.path.join(dataset_path, 'images')
