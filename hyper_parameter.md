@@ -1182,3 +1182,32 @@
   - **两断点分诊**: ①AE 32d 瓶颈: native 768d 59.62 → dim32 48.08 (-11.5pp), 判别差分方向被线性瓶颈截断 (重建 cos 0.847 反而>224 的 0.815, 证明非重建质量而是判别信息丢失, EXP-030 同构) ②3D 传导: 同为 48.08% 的 2D 起点, 224 版 3D 场 76.92 any vs native 版 61.54 (-15.4pp), native 尖峰特征分布 (9-patch) 对 GS 拟合/渲染不友好
   - 结论: native 天花板被 32d AE 卡死; waldo 翻正的必要条件=64d rasterizer 改造 (任务4 由可选升级为必要); dim32 下两特征 2D 打平 (48.08=48.08) 亦证 32d 是硬瓶颈
   - 附注: native 全帧提取 eval/extract_native_all.py (float32! AE dataset 无 dtype 转换, half 会崩); 快测 unpack 坑: cv2 图像 (H,W,C) vs tensor (C,H,W) 的 shape unpack 顺序
+
+## EXP-059 (2026-10-09~10) waldo 64d native 全链路 — 方向最终关闭
+
+**目的**: EXP-058 证明 waldo 翻正必要条件 = 64d rasterizer 改造 (突破 32d 静态共享内存硬瓶颈), 本实验验证 64d 后 waldo 是否翻正。
+
+**工程改造** (首次突破 48KB 静态 smem 上限):
+- backward.cu: `collected_feature[F×256]` 静态 → `extern __shared__` 动态分配 + `cudaFuncSetAttribute` 突破 48KB; 动态 smem = (C+F)×256×4B = 67KB < Ada 单 SM 100KB 上限
+- 技术上限: 该方案支撑到 ~96d (128d 超 100KB)
+- 代价: 64d 训练速度 3.6 it/s vs 32d 14 it/s (2.5× 慢, 寄存器/smem 占用压力 + gyy 进程争抢)
+
+**链路**: AE 64d (结构 [256,128,64,64,64]→[64,128,256,256,768]) → native 特征 encode → 2D 快测 → 3D×3 (raw) → 渲染 → eval+McNemar
+
+**关键结果**:
+| 环节 | 数字 | 结论 |
+|---|---|---|
+| native 768d 2D | 59.62% cross | 起点 (同 EXP-058) |
+| → AE 64d | **59.62% cross** | **零损耗! 32d 瓶颈 (-11.5pp) 彻底解除**, 与 2D PCA 扫描判别峰 128d 一致 |
+| → 3D 场 (chosen any) | 69.23% (9/13) | vs CLIP 场 92.31% = **-23.08pp (b=3 c=0, p=0.25 ns)**; first 口径同 -23.08pp |
+
+**per-level**: L1 any 76.92 / L2 61.54 / L3 76.92 — L1/L3 单级追平旧 224 raw 场 (76.92), 但 chosen-level 聚合被拉低
+
+**三场对照矩阵** (waldo, any 口径): 224×32d raw 76.92 > 64d native 69.23 > 32d native 61.54 << CLIP 92.31
+
+**结论 (方向关闭的三重证据)**:
+1. AE 维度不是 3D 传导瓶颈 (64d 零损耗但 3D 仍输 23pp) — EXP-058 断点1 已修, 断点2 (3D 传导) 独立存在
+2. native 分辨率不是 3D 传导瓶颈 (2D +15.4pp 但 3D 反而比 224 版差 7.7pp) — native 尖峰特征分布对 GS 多视角融合/渲染的传导伤害大于其入口优势
+3. waldo 的 3D 失败是管线级 (多视角平均+level 选择偏向 CLIP 式平滑场), 非单点可修 — 论文 limitation 完整闭环: "2D 入口已证明可翻正 (+15.4pp), 3D 传导失败归因于 GS 场对 DINOv2 高频判别结构的平均化"
+
+**附注**: mcnemar.py 不支持 majority 口径 (报错但 any/first 已覆盖方向); EXP-059 结果与 EXP-054 的 waldo raw 场不可互换 (特征版本不同)
