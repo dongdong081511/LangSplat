@@ -1,0 +1,16 @@
+# results and datasets stay out of the release
+output/
+eval_result/
+dataset/
+ckpt/
+ckpts/
+*.log
+*.pt
+*.pth
+*.npy
+*.ply
+__pycache__/
+*.egg-info/
+build/
+paper_figs/
+LaGa_ref/
